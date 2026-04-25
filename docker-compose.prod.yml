@@ -1,0 +1,28 @@
+version: "3.9"
+
+# Production overlay — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  db:
+    ports: []  # Do not expose Postgres externally in production
+
+  backend:
+    environment:
+      DEV_CORS: "false"
+      RUST_ENV: production
+      RUST_LOG: info,persona_ai=info,sqlx=warn
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      target: prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend

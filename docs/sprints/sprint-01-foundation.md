@@ -143,7 +143,7 @@ Use `tower-sessions` with `tower-sessions-sqlx-store::PostgresStore`. Session co
 On login:
 1. Generate a **new** session id (regeneration prevents fixation).
 2. Write `user_id` into session data.
-3. Insert a row into our shadow `session_index` table: `(user_id, session_id_hash, created_at, user_agent, ip)`. This is what powers "log out everywhere" — `tower_sessions` is library-owned and we never query its rows directly.
+3. Insert a row into our shadow `session_index` table: `(user_id, session_id_hash, created_at, user_agent, ip)`. `session_id_hash` = sha3_256(session.id()) hex-encoded. This is what powers "log out everywhere" — `tower_sessions` is library-owned and we never query its rows directly. Hashing prevents the session_index table from being a credential store if the DB is inspected.
 4. Role is **not** cached in session data. Authorization always refetches `users.role` (and `users.status`) per request via `require_auth`, so admin demotion or account disable takes effect immediately without forcing re-login.
 
 On logout:
@@ -204,7 +204,7 @@ All `/api/*` responses are JSON with `Content-Type: application/json`.
 ### 1.9 Invite tokens
 
 - Generate 32 random bytes, hex-encode → 64-char plaintext token.
-- Store `sha256(token)` as primary key in `invite_tokens`.
+- Store `sha3_256(token)` (SHA3-256, not SHA2) as primary key in `invite_tokens`.
 - Default TTL 7 days.
 - Invite link: `{APP_BASE_URL}/accept-invite?token={plaintext}`.
 - The plaintext is returned once at creation time and never stored.

@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light mode */
+  --bg: #FFFFFF;
+  --bg-elevated: #FAFAFA;
+  --bg-subtle: #F4F4F5;
+  --border: #E4E4E7;
+  --text: #0A0A0A;
+  --text-muted: #52525B;
+  --text-subtle: #A1A1AA;
+  --accent: #18181B;
+  --accent-fg: #FAFAFA;
+  --danger: #DC2626;
+  --warning: #D97706;
+  --success: #16A34A;
+}
+
+.dark {
+  --bg: #0A0A0A;
+  --bg-elevated: #141414;
+  --bg-subtle: #1C1C1F;
+  --border: #27272A;
+  --text: #FAFAFA;
+  --text-muted: #A1A1AA;
+  --text-subtle: #71717A;
+  --accent: #FAFAFA;
+  --accent-fg: #0A0A0A;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}

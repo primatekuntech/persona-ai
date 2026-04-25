@@ -64,19 +64,27 @@ CREATE TABLE users (
 --
 -- If we need to query "all sessions for user X" (for revoke-all), we shadow the library's
 -- table with an application-managed projection:
+--
+-- Sprint 1 decision: we store sha3_256(tower_sessions.id) rather than the raw session ID.
+-- Rationale: the raw session ID is equivalent to a Bearer token. Hashing it means the
+-- session_index table is safe to inspect in DB tooling without leaking live credentials.
+-- Revoke-all loads all session_index hashes for a user, loads all tower_sessions IDs from
+-- the library table, computes sha3_256 in Rust to find matches, then deletes both rows.
+-- Postgres's pgcrypto does not implement SHA-3, so the join is done in application code.
 CREATE TABLE session_index (
-    session_id   TEXT PRIMARY KEY,          -- matches tower_sessions.id
-    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    ip           INET,
-    user_agent   TEXT,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at   TIMESTAMPTZ NOT NULL
+    session_id_hash TEXT PRIMARY KEY,       -- sha3_256(tower_sessions.id) hex-encoded
+    session_id      TEXT NOT NULL,          -- raw tower_sessions.id for O(n_user) revoke-all
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ip              INET,
+    user_agent      TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX ON session_index (user_id);
 CREATE INDEX ON session_index (expires_at);
 -- Populated in the login handler; deleted on logout; nightly sweep removes rows whose
--- session_id no longer exists in tower_sessions.
+-- session_id_hash no longer has a matching tower_sessions row.
 
 CREATE TABLE login_attempts (
     id          BIGSERIAL PRIMARY KEY,
@@ -89,7 +97,7 @@ CREATE INDEX ON login_attempts (email, attempted_at DESC);
 -- Used for per-account brute-force throttle. Pruned with audit retention.
 
 CREATE TABLE invite_tokens (
-    token_hash      TEXT PRIMARY KEY,                 -- sha256 of token; plaintext shown once
+    token_hash      TEXT PRIMARY KEY,                 -- sha3_256 of token; plaintext shown once
     email           CITEXT NOT NULL,
     role            TEXT NOT NULL CHECK (role IN ('admin', 'user')) DEFAULT 'user',
     created_by      UUID NOT NULL REFERENCES users(id),

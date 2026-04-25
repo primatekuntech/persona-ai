@@ -1,0 +1,21 @@
+# Model integrity manifest.
+# Sprint 1: placeholder entries — no models are downloaded yet.
+# Update path, sha256, and size_bytes when you run scripts/download-models.sh.
+
+[llm]
+[llm.mistral_7b]
+path = "llm/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+size_bytes = 0
+
+[embeddings]
+[embeddings.nomic_embed]
+path = "embeddings/nomic-embed-text-v1.5.f16.gguf"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+size_bytes = 0
+
+[whisper]
+[whisper.base_en]
+path = "whisper/ggml-base.en.bin"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+size_bytes = 0
