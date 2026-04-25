@@ -1,0 +1,80 @@
+# Secrets & local config
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+
+# Rust
+/backend/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Node / frontend
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+/frontend/.turbo/
+**/npm-debug.log*
+**/pnpm-debug.log*
+**/yarn-debug.log*
+
+# Build artefacts
+*.swp
+*.swo
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.sample.json
+*.iml
+
+# Claude Code local config (personal; do not share)
+.claude/settings.local.json
+
+# Data directories (bind-mounted on VPS, never committed)
+/data/
+/data-dev/
+/data-test/
+
+# Model files (downloaded on-demand, verified by SHA-256)
+*.gguf
+*.bin
+*.onnx
+*.ggml
+/backend/models/
+
+# Databases / dumps
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+
+# Coverage
+/coverage/
+*.profraw
+*.profdata
+lcov.info
+
+# Playwright
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/.last-run.json
+
+# Logs
+*.log
+logs/
+
+# Python (in case any tooling scripts are written)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker local volume bind mounts
+/docker-data/
