@@ -89,13 +89,12 @@ async fn create_session_returns_session(pool: PgPool) {
 
     let session_id = create_session_db(&pool, user_id, persona_id, "test-model", 0.7, 0.9).await;
 
-    let row: (Uuid, Uuid, String) = sqlx::query_as(
-        "SELECT persona_id, user_id, model_id FROM chat_sessions WHERE id = $1",
-    )
-    .bind(session_id)
-    .fetch_one(&pool)
-    .await
-    .expect("fetch session");
+    let row: (Uuid, Uuid, String) =
+        sqlx::query_as("SELECT persona_id, user_id, model_id FROM chat_sessions WHERE id = $1")
+            .bind(session_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch session");
 
     assert_eq!(row.0, persona_id);
     assert_eq!(row.1, user_id);
@@ -108,13 +107,14 @@ async fn list_sessions_empty(pool: PgPool) {
     let user_id = seed_user(&pool, "chat_list_empty@example.com").await;
     let persona_id = seed_persona(&pool, user_id).await;
 
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM chat_sessions WHERE user_id = $1 AND persona_id = $2")
-            .bind(user_id)
-            .bind(persona_id)
-            .fetch_one(&pool)
-            .await
-            .expect("count sessions");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM chat_sessions WHERE user_id = $1 AND persona_id = $2",
+    )
+    .bind(user_id)
+    .bind(persona_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count sessions");
 
     assert_eq!(count, 0);
 }
@@ -128,14 +128,13 @@ async fn get_session_404_wrong_user(pool: PgPool) {
 
     let session_id = seed_session(&pool, user_a, persona_a).await;
 
-    let found: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM chat_sessions WHERE id = $1 AND user_id = $2",
-    )
-    .bind(session_id)
-    .bind(user_b)
-    .fetch_optional(&pool)
-    .await
-    .expect("query");
+    let found: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM chat_sessions WHERE id = $1 AND user_id = $2")
+            .bind(session_id)
+            .bind(user_b)
+            .fetch_optional(&pool)
+            .await
+            .expect("query");
 
     assert!(found.is_none(), "user B must not see user A's session");
 }
@@ -156,12 +155,11 @@ async fn delete_session_removes_it(pool: PgPool) {
         .rows_affected();
     assert_eq!(affected, 1);
 
-    let after: Option<Uuid> =
-        sqlx::query_scalar("SELECT id FROM chat_sessions WHERE id = $1")
-            .bind(session_id)
-            .fetch_optional(&pool)
-            .await
-            .expect("fetch after delete");
+    let after: Option<Uuid> = sqlx::query_scalar("SELECT id FROM chat_sessions WHERE id = $1")
+        .bind(session_id)
+        .fetch_optional(&pool)
+        .await
+        .expect("fetch after delete");
     assert!(after.is_none(), "session must be gone after delete");
 }
 
@@ -283,12 +281,11 @@ async fn update_session_title_only_when_null(pool: PgPool) {
     .await
     .expect("set title");
 
-    let title: Option<String> =
-        sqlx::query_scalar("SELECT title FROM chat_sessions WHERE id = $1")
-            .bind(session_id)
-            .fetch_one(&pool)
-            .await
-            .expect("fetch title");
+    let title: Option<String> = sqlx::query_scalar("SELECT title FROM chat_sessions WHERE id = $1")
+        .bind(session_id)
+        .fetch_one(&pool)
+        .await
+        .expect("fetch title");
     assert_eq!(title.as_deref(), Some("First title"));
 
     // Second update must NOT overwrite (title IS NOT NULL)
