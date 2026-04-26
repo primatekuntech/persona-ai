@@ -20,9 +20,9 @@ export const MOCK_PERSONA = {
   relation: "self",
   description: null,
   birth_year: null,
-  avatar_url: null,
+  avatar_path: null,
   era_count: 0,
-  document_count: 0,
+  doc_count: 0,
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
 };
@@ -107,20 +107,24 @@ export async function mockLogout(page: Page) {
   });
 }
 
-/** Mock GET /api/personas (list) and POST /api/personas (create). */
+/** Mock GET /api/personas (list, may include ?limit=N) and POST /api/personas (create). */
 export async function mockPersonas(
   page: Page,
   items: typeof MOCK_PERSONA[] = [MOCK_PERSONA],
 ) {
-  await page.route("**/api/personas", (route) => {
-    if (route.request().method() === "GET") {
-      return json(route, { items, next_cursor: null });
-    }
-    if (route.request().method() === "POST") {
-      return json(route, MOCK_PERSONA, 201);
-    }
-    return route.fallback();
-  });
+  // Use a function matcher so query params like ?limit=200 are included correctly
+  await page.route(
+    (url) => url.pathname === "/api/personas",
+    (route) => {
+      if (route.request().method() === "GET") {
+        return json(route, { items, next_cursor: null });
+      }
+      if (route.request().method() === "POST") {
+        return json(route, MOCK_PERSONA, 201);
+      }
+      return route.fallback();
+    },
+  );
 }
 
 /** Mock GET /api/personas/:id and the persona workspace sub-routes. */

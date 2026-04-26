@@ -6,6 +6,13 @@ import {
   MOCK_PERSONA,
 } from "./helpers/mock-api";
 
+// ─── Helper: click the header "Create persona" button ────────────────────────
+// Before the dialog opens there is exactly one such button. After it opens
+// there are two (header + dialog submit), so we always click header via .first().
+function clickCreateButton(page: Parameters<typeof mockMe>[0]) {
+  return page.getByRole("button", { name: "Create persona" }).first().click();
+}
+
 test.describe("Personas: list", () => {
   test("renders persona cards from API", async ({ page }) => {
     await mockMe(page);
@@ -22,8 +29,9 @@ test.describe("Personas: list", () => {
 
     await page.goto("/personas");
 
-    // No persona cards — the create button should still be present
-    await expect(page.getByRole("button", { name: /new persona/i })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create persona" }).first(),
+    ).toBeVisible();
     await expect(page.getByText(MOCK_PERSONA.name)).not.toBeVisible();
   });
 
@@ -37,18 +45,18 @@ test.describe("Personas: list", () => {
       page.getByRole("heading", { name: /personas/i }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /new persona/i }),
+      page.getByRole("button", { name: "Create persona" }).first(),
     ).toBeVisible();
   });
 });
 
 test.describe("Personas: create dialog", () => {
-  test("dialog opens on New persona button click", async ({ page }) => {
+  test("dialog opens on Create persona button click", async ({ page }) => {
     await mockMe(page);
     await mockPersonas(page, []);
 
     await page.goto("/personas");
-    await page.getByRole("button", { name: /new persona/i }).click();
+    await clickCreateButton(page);
 
     await expect(
       page.getByRole("heading", { name: "Create persona" }),
@@ -63,7 +71,6 @@ test.describe("Personas: create dialog", () => {
     await mockPersonas(page, []);
     await mockPersonaWorkspace(page, MOCK_PERSONA);
 
-    // Mock the documents endpoint the workspace may call
     await page.route(`**/api/personas/${MOCK_PERSONA.id}/documents`, (route) => {
       return route.fulfill({
         status: 200,
@@ -73,10 +80,11 @@ test.describe("Personas: create dialog", () => {
     });
 
     await page.goto("/personas");
-    await page.getByRole("button", { name: /new persona/i }).click();
+    await clickCreateButton(page);
 
     await page.locator("input#cp-name").fill("Alice, age 25");
-    await page.getByRole("button", { name: /create/i }).click();
+    // Click the submit button inside the dialog (not the header button)
+    await page.getByRole("dialog").getByRole("button", { name: "Create persona" }).click();
 
     await expect(page).toHaveURL(
       new RegExp(`/personas/${MOCK_PERSONA.id}/dashboard`),
@@ -88,10 +96,9 @@ test.describe("Personas: create dialog", () => {
     await mockPersonas(page, []);
 
     await page.goto("/personas");
-    await page.getByRole("button", { name: /new persona/i }).click();
+    await clickCreateButton(page);
 
-    // Submit without filling name
-    await page.getByRole("button", { name: /create/i }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Create persona" }).click();
 
     await expect(page.getByText("Required")).toBeVisible();
   });
@@ -101,12 +108,11 @@ test.describe("Personas: create dialog", () => {
     await mockPersonas(page, []);
 
     await page.goto("/personas");
-    await page.getByRole("button", { name: /new persona/i }).click();
+    await clickCreateButton(page);
     await expect(
       page.getByRole("heading", { name: "Create persona" }),
     ).toBeVisible();
 
-    // Press Escape to close
     await page.keyboard.press("Escape");
 
     await expect(

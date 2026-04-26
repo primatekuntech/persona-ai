@@ -1,4 +1,24 @@
 import { defineConfig, devices } from "@playwright/test";
+import { execSync } from "child_process";
+
+// Playwright's bundled Chromium doesn't support Ubuntu 26.04.
+// Auto-detect a system Chromium so tests work without manual configuration.
+function resolveChromium(): string | undefined {
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+    return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+  }
+  for (const bin of ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]) {
+    try {
+      const path = execSync(`which ${bin} 2>/dev/null`, { encoding: "utf-8" }).trim();
+      if (path) return path;
+    } catch {
+      // not found, try next
+    }
+  }
+  return undefined;
+}
+
+const executablePath = resolveChromium();
 
 export default defineConfig({
   testDir: "./e2e",
@@ -18,11 +38,10 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // Use system Chrome when Playwright's bundled Chromium is unavailable
-        // (e.g. Ubuntu 26.04). Install via: sudo snap install chromium
-        ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-          ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
-          : {}),
+        // executablePath must be nested under launchOptions — not top-level use
+        launchOptions: {
+          ...(executablePath ? { executablePath } : {}),
+        },
       },
     },
   ],
