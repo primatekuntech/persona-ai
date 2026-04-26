@@ -102,13 +102,12 @@ async fn reaper_requeues_stale_running_jobs(pool: PgPool) {
 
     assert_eq!(rows, 1, "stale job should be reaped");
 
-    let (status, last_error, attempts): (String, Option<String>, i32) = sqlx::query_as(
-        "SELECT status, last_error, attempts FROM jobs WHERE id=$1",
-    )
-    .bind(stale_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let (status, last_error, attempts): (String, Option<String>, i32) =
+        sqlx::query_as("SELECT status, last_error, attempts FROM jobs WHERE id=$1")
+            .bind(stale_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     assert_eq!(status, "queued");
     assert_eq!(last_error.as_deref(), Some("reaped: heartbeat expired"));
@@ -146,12 +145,11 @@ async fn reaper_skips_fresh_running_jobs(pool: PgPool) {
 
     assert_eq!(rows, 0, "fresh job must not be reaped");
 
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM jobs WHERE id=$1")
-            .bind(fresh_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM jobs WHERE id=$1")
+        .bind(fresh_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(status, "running");
 }
 
@@ -199,23 +197,23 @@ async fn concurrency_cap_defers_job_at_limit(pool: PgPool) {
 
     // At cap (3 >= 3): reschedule the queued job instead of picking it
     if running >= 3 {
-        sqlx::query(
-            "UPDATE jobs SET scheduled_at=now()+interval '5 seconds' WHERE id=$1",
-        )
-        .bind(queued_id)
-        .execute(&pool)
-        .await
-        .unwrap();
+        sqlx::query("UPDATE jobs SET scheduled_at=now()+interval '5 seconds' WHERE id=$1")
+            .bind(queued_id)
+            .execute(&pool)
+            .await
+            .unwrap();
     }
 
     // Job must still be queued, not running
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM jobs WHERE id=$1")
-            .bind(queued_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(status, "queued", "job should stay queued when cap is reached");
+    let status: String = sqlx::query_scalar("SELECT status FROM jobs WHERE id=$1")
+        .bind(queued_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        status, "queued",
+        "job should stay queued when cap is reached"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -266,12 +264,11 @@ async fn concurrency_cap_allows_job_under_limit(pool: PgPool) {
     .await
     .unwrap();
 
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM jobs WHERE id=$1")
-            .bind(queued_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM jobs WHERE id=$1")
+        .bind(queued_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(status, "running", "job should be picked up when under cap");
 }
 
@@ -308,13 +305,12 @@ async fn job_retries_with_exponential_backoff(pool: PgPool) {
     .await
     .unwrap();
 
-    let (status, attempts, last_error): (String, i32, Option<String>) = sqlx::query_as(
-        "SELECT status, attempts, last_error FROM jobs WHERE id=$1",
-    )
-    .bind(job_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let (status, attempts, last_error): (String, i32, Option<String>) =
+        sqlx::query_as("SELECT status, attempts, last_error FROM jobs WHERE id=$1")
+            .bind(job_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     assert_eq!(status, "queued");
     assert_eq!(attempts, 1);

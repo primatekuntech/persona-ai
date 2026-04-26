@@ -29,6 +29,7 @@ export interface Document {
   progress_pct: number | null;
   status: DocumentStatus;
   error: string | null;
+  transcript_path: string | null;
   created_at: string;
   ingested_at: string | null;
 }

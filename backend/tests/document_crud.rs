@@ -281,20 +281,21 @@ async fn delete_with_quota_decrements_atomically(pool: PgPool) {
             .await
             .unwrap();
 
-    assert_eq!(storage, 0, "storage should decrement to 0 (was 5000, doc was 5000)");
+    assert_eq!(
+        storage, 0,
+        "storage should decrement to 0 (was 5000, doc was 5000)"
+    );
     assert_eq!(doc_count, 0, "doc_count should decrement to 0");
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn delete_with_quota_noop_for_missing_doc(pool: PgPool) {
     let user_id = seed_user(&pool).await;
-    sqlx::query(
-        "UPDATE users SET current_storage_bytes=1000, current_doc_count=2 WHERE id=$1",
-    )
-    .bind(user_id)
-    .execute(&pool)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE users SET current_storage_bytes=1000, current_doc_count=2 WHERE id=$1")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let missing_id = Uuid::now_v7();
     let mut tx = pool.begin().await.unwrap();
@@ -326,24 +327,21 @@ async fn update_status_stores_correctly(pool: PgPool) {
     let persona_id = seed_persona(&pool, user_id).await;
     let doc_id = insert_doc(&pool, persona_id, user_id, "statushash", 100, None).await;
 
-    sqlx::query(
-        "UPDATE documents SET status=$1, progress_pct=$2, error=$3 WHERE id=$4",
-    )
-    .bind("transcribing")
-    .bind(42i16)
-    .bind(Option::<&str>::None)
-    .bind(doc_id)
-    .execute(&pool)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE documents SET status=$1, progress_pct=$2, error=$3 WHERE id=$4")
+        .bind("transcribing")
+        .bind(42i16)
+        .bind(Option::<&str>::None)
+        .bind(doc_id)
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    let (status, pct, error): (String, Option<i16>, Option<String>) = sqlx::query_as(
-        "SELECT status, progress_pct, error FROM documents WHERE id=$1",
-    )
-    .bind(doc_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let (status, pct, error): (String, Option<i16>, Option<String>) =
+        sqlx::query_as("SELECT status, progress_pct, error FROM documents WHERE id=$1")
+            .bind(doc_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     assert_eq!(status, "transcribing");
     assert_eq!(pct, Some(42));
