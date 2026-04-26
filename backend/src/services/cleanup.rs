@@ -92,7 +92,7 @@ async fn run_cleanup(state: &AppState) {
         Err(e) => tracing::error!(error=%e, "cleanup: prune invite_tokens failed"),
     }
 
-    // 8. Prune export files older than 7 days
+    // 8. Prune export files older than 7 days + mark those jobs expired in DB
     let exports_dir = state.config.data_dir.join("exports");
     if exports_dir.exists() {
         let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 86400);
@@ -103,6 +103,21 @@ async fn run_cleanup(state: &AppState) {
                         if let Ok(meta) = f.metadata() {
                             if let Ok(modified) = meta.modified() {
                                 if modified < cutoff {
+                                    // Extract job_id from filename stem
+                                    if let Some(stem) = f
+                                        .path()
+                                        .file_stem()
+                                        .and_then(|s| s.to_str())
+                                        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+                                    {
+                                        let _ = sqlx::query(
+                                            "UPDATE jobs SET payload = payload || '{\"expired\":true}'::jsonb \
+                                             WHERE id=$1 AND kind='user_export' AND status='done'",
+                                        )
+                                        .bind(stem)
+                                        .execute(&state.db)
+                                        .await;
+                                    }
                                     let _ = std::fs::remove_file(f.path());
                                 }
                             }
@@ -113,7 +128,30 @@ async fn run_cleanup(state: &AppState) {
         }
     }
 
-    // 9. Orphan file check: uploads
+    // 9. Prune .tmp upload files older than 1 h
+    let tmp_dir = state.config.data_dir.join("uploads").join(".tmp");
+    if tmp_dir.exists() {
+        let tmp_cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        if let Ok(rd) = std::fs::read_dir(&tmp_dir) {
+            let mut pruned = 0u64;
+            for f in rd.flatten() {
+                if let Ok(meta) = f.metadata() {
+                    if let Ok(modified) = meta.modified() {
+                        if modified < tmp_cutoff {
+                            if std::fs::remove_file(f.path()).is_ok() {
+                                pruned += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            if pruned > 0 {
+                tracing::info!(pruned=%pruned, "cleanup: pruned stale .tmp uploads");
+            }
+        }
+    }
+
+    // 10. Orphan file check: uploads
     cleanup_orphan_uploads(state).await;
 
     tracing::info!("cleanup: daily pass complete");

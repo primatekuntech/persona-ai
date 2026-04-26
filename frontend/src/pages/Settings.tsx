@@ -58,31 +58,29 @@ export default function Settings() {
     setExportStatus("pending");
     setExportUrl(null);
     try {
-      const res = await api<{ export_url?: string; status?: string }>(
-        "/api/auth/export",
-        { method: "POST" },
-      );
-      if (res.export_url) {
-        setExportStatus("done");
-        setExportUrl(res.export_url);
-        return;
-      }
-      // Poll if the backend returns a job status instead of an immediate URL
+      const res = await api<{ job_id: string }>("/api/auth/export", { method: "POST" });
+      const jobId = res.job_id;
+
       let attempts = 0;
       exportPollRef.current = setInterval(async () => {
         attempts++;
         try {
-          const poll = await api<{ export_url?: string; status?: string }>("/api/auth/export");
-          if (poll.export_url) {
+          const poll = await api<{ status: string; download_url?: string | null }>(
+            `/api/auth/export/${jobId}`,
+          );
+          if (poll.download_url) {
             setExportStatus("done");
-            setExportUrl(poll.export_url);
+            setExportUrl(poll.download_url);
+            if (exportPollRef.current) clearInterval(exportPollRef.current);
+          } else if (poll.status === "failed" || poll.status === "expired") {
+            setExportStatus("idle");
+            toast.error("Export failed. Please try again.");
             if (exportPollRef.current) clearInterval(exportPollRef.current);
           }
         } catch {
           // continue polling
         }
         if (attempts >= 24) {
-          // 2 minutes
           if (exportPollRef.current) clearInterval(exportPollRef.current);
           setExportStatus("idle");
           toast.error("Export timed out. Please try again.");
@@ -100,15 +98,17 @@ export default function Settings() {
 
   async function onDeleteAccount(data: DeleteFormData) {
     try {
-      await api("/api/auth/account", {
-        method: "DELETE",
-        body: JSON.stringify({ password: data.password }),
+      await api("/api/auth/delete", {
+        method: "POST",
+        body: JSON.stringify({ password: data.password, confirm: "DELETE" }),
       });
       toast.success("Account deleted.");
       window.location.href = "/login";
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
+      if (e instanceof ApiError && (e.status === 400 || e.status === 422)) {
         toast.error("Password is incorrect.");
+      } else if (e instanceof ApiError && e.status === 409) {
+        toast.error(e.message);
       } else if (e instanceof ApiError) {
         toast.error(e.message);
       } else {

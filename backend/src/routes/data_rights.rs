@@ -62,19 +62,24 @@ pub async fn request_export(
         });
     }
 
-    // 429 if a completed export exists within the last 24 h
-    let recent: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM jobs WHERE kind='user_export' AND user_id=$1 \
+    // 429 if a completed export exists within the last 24 h — calculate remaining window
+    let recent_finished_at: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT finished_at FROM jobs WHERE kind='user_export' AND user_id=$1 \
          AND status='done' AND finished_at > now() - interval '24 hours' LIMIT 1",
     )
     .bind(user_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(AppError::Database)?;
+    .map_err(AppError::Database)?
+    .flatten();
 
-    if recent.is_some() {
+    if let Some(finished_at) = recent_finished_at {
+        let elapsed_secs = (OffsetDateTime::now_utc() - finished_at)
+            .whole_seconds()
+            .max(0) as u64;
+        let retry_after = 86_400_u64.saturating_sub(elapsed_secs).max(1);
         return Err(AppError::RateLimited {
-            retry_after_secs: 86400,
+            retry_after_secs: retry_after,
         });
     }
 
@@ -192,6 +197,7 @@ pub struct DownloadQuery {
 
 pub async fn download_export(
     State(state): State<AppState>,
+    ctx: UserCtx,
     Path(job_id): Path<Uuid>,
     Query(q): Query<DownloadQuery>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -212,6 +218,11 @@ pub async fn download_export(
             .map_err(AppError::Database)?;
 
     let (user_id, status) = row.ok_or(AppError::NotFound)?;
+
+    // Spec §7.22: re-verify session ownership (defence-in-depth; 404-not-403 rule)
+    if user_id != ctx.user_id {
+        return Err(AppError::NotFound);
+    }
 
     if status != "done" {
         return Err(AppError::NotFound);
@@ -290,12 +301,10 @@ pub async fn delete_account(
         .await?
         .ok_or(AppError::Unauthorized)?;
 
-    // Re-verify password
+    // Re-verify password — wrong password is a client validation error (400), not 403
     let ok = verify_password(&body.password, &user.password_hash).unwrap_or(false);
     if !ok {
-        return Err(AppError::Forbidden {
-            code: "invalid_password",
-        });
+        return Err(AppError::Validation("Password is incorrect.".into()));
     }
 
     // Guard: must not be the last active admin

@@ -26,10 +26,19 @@ export async function api<T = void>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const safeMethods = ["GET", "HEAD", "OPTIONS"];
+  const csrfHeader: Record<string, string> = {};
+  if (!safeMethods.includes(method)) {
+    const match = document.cookie.match(/(?:^|;\s*)pai_csrf=([^;]+)/);
+    if (match) csrfHeader["X-CSRF-Token"] = match[1];
+  }
+
   const res = await fetch(path, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...csrfHeader,
       ...(init.headers as Record<string, string>),
     },
     ...init,

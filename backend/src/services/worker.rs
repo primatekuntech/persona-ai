@@ -352,7 +352,7 @@ async fn run_user_export(
         zip.start_file(format!("personas/{persona_id}/documents.json"), options)?;
         zip.write_all(serde_json::to_vec_pretty(&docs_json)?.as_slice())?;
 
-        // Per-document files
+        // Per-document files — read from disk inside spawn_blocking
         let doc_rows: Vec<(Uuid, String, String)> = sqlx::query_as(
             "SELECT id, original_path, mime_type FROM documents WHERE persona_id=$1",
         )
@@ -362,23 +362,37 @@ async fn run_user_export(
         .unwrap_or_default();
 
         for (doc_id, original_path, _mime) in &doc_rows {
-            let file_path = std::path::Path::new(original_path);
-            if file_path.exists() {
-                if let Ok(bytes) = std::fs::read(file_path) {
-                    let ext = file_path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("bin");
+            let path_owned = original_path.clone();
+            let doc_id_owned = *doc_id;
+            let read_result = tokio::task::spawn_blocking(move || {
+                let p = std::path::Path::new(&path_owned);
+                if p.exists() {
+                    std::fs::read(p).ok().map(|b| {
+                        let ext = p
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("bin")
+                            .to_owned();
+                        (b, ext)
+                    })
+                } else {
+                    None
+                }
+            })
+            .await
+            .unwrap_or(None);
+
+            match read_result {
+                Some((bytes, ext)) => {
                     zip.start_file(
-                        format!("personas/{persona_id}/documents/{doc_id}.{ext}"),
+                        format!("personas/{persona_id}/documents/{doc_id_owned}.{ext}"),
                         options,
                     )?;
                     zip.write_all(&bytes)?;
-                } else {
-                    tracing::warn!(doc_id=%doc_id, path=%original_path, "user_export: cannot read document file");
                 }
-            } else {
-                tracing::warn!(doc_id=%doc_id, path=%original_path, "user_export: document file not found, skipping");
+                None => {
+                    tracing::warn!(doc_id=%doc_id, path=%original_path, "user_export: document file not found or unreadable, skipping");
+                }
             }
         }
 
@@ -479,6 +493,27 @@ async fn update_job_payload(state: &AppState, job_id: Uuid, payload: serde_json:
 // ─── user_delete ──────────────────────────────────────────────────────────────
 
 async fn run_user_delete(state: &AppState, user_id: Uuid) -> Result<(), anyhow::Error> {
+    // Re-check last-admin guard inside the job to close the TOCTOU window (spec §7.23)
+    let role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM users WHERE id=$1 AND status='disabled'")
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or(None);
+
+    if role.as_deref() == Some("admin") {
+        let active_admins: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE role='admin' AND status='active'")
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or(1);
+        if active_admins == 0 {
+            return Err(anyhow::anyhow!(
+                "user_delete: aborted — would leave no active admins"
+            ));
+        }
+    }
+
     // Fetch all persona IDs for user
     let persona_ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM personas WHERE user_id=$1")
         .bind(user_id)
