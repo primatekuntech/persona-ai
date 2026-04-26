@@ -1,0 +1,34 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+  encode zstd gzip
+
+  handle /api/* {
+    reverse_proxy backend:8080
+    header -Server
+  }
+
+  handle /healthz {
+    reverse_proxy backend:8080
+  }
+
+  handle /readyz {
+    reverse_proxy backend:8080
+  }
+
+  handle {
+    root * /srv
+    try_files {path} /index.html
+    file_server
+  }
+
+  request_body {
+    max_size 600MB
+  }
+
+  tls {
+    protocols tls1.2 tls1.3
+  }
+}

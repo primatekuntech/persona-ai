@@ -1,7 +1,7 @@
 /// Background job worker pool. Polls the `jobs` table using `SELECT ... FOR UPDATE SKIP LOCKED`.
 use crate::{repositories::documents as doc_repo, services::ingest, state::AppState};
 use sqlx::FromRow;
-use std::time::Duration;
+use std::{io::Write, time::Duration};
 use uuid::Uuid;
 
 const MAX_CONCURRENT_INGEST_PER_USER: i64 = 3;
@@ -230,11 +230,345 @@ async fn dispatch(state: &AppState, job: &JobRow) -> Result<(), String> {
                 .await
                 .map_err(|e| e.to_string())
         }
+        "user_export" => {
+            let user_id = job
+                .user_id
+                .ok_or_else(|| "user_export: missing user_id".to_string())?;
+            let job_id = job.id;
+            run_user_export(state, user_id, job_id)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        "user_delete" => {
+            let user_id = job
+                .user_id
+                .ok_or_else(|| "user_delete: missing user_id".to_string())?;
+            run_user_delete(state, user_id)
+                .await
+                .map_err(|e| e.to_string())
+        }
         other => {
             tracing::warn!(kind=%other, "unknown job kind — skipping");
             Ok(())
         }
     }
+}
+
+// ─── user_export ──────────────────────────────────────────────────────────────
+
+async fn run_user_export(
+    state: &AppState,
+    user_id: Uuid,
+    job_id: Uuid,
+) -> Result<(), anyhow::Error> {
+    use zip::{write::FileOptions, ZipWriter};
+
+    // Update progress: started
+    update_job_payload(state, job_id, serde_json::json!({ "progress_pct": 0 })).await;
+
+    let buf = std::io::Cursor::new(Vec::new());
+    let mut zip = ZipWriter::new(buf);
+    let options = FileOptions::<()>::default().compression_method(zip::CompressionMethod::Deflated);
+
+    // 1. account.json
+    let account_json: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT row_to_json(u) FROM \
+         (SELECT id, email, role, status, display_name, created_at, last_login_at \
+          FROM users WHERE id=$1) u",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None);
+
+    zip.start_file("account.json", options)?;
+    zip.write_all(
+        serde_json::to_vec_pretty(&account_json.unwrap_or(serde_json::Value::Null))?.as_slice(),
+    )?;
+
+    // 2. Personas
+    let persona_ids: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM personas WHERE user_id=$1 ORDER BY created_at")
+            .bind(user_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+
+    let total = persona_ids.len().max(1) as i64;
+
+    for (i, persona_id) in persona_ids.iter().enumerate() {
+        // persona.json
+        let persona_json: Option<serde_json::Value> = sqlx::query_scalar(
+            "SELECT row_to_json(p) FROM \
+             (SELECT id, name, relation, description, birth_year, created_at, updated_at \
+              FROM personas WHERE id=$1) p",
+        )
+        .bind(persona_id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+
+        let eras_json: Vec<serde_json::Value> = sqlx::query_scalar(
+            "SELECT row_to_json(e) FROM \
+             (SELECT id, label, start_date, end_date, description, created_at \
+              FROM eras WHERE persona_id=$1 ORDER BY start_date NULLS LAST) e",
+        )
+        .bind(persona_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+
+        let style_json: Vec<serde_json::Value> = sqlx::query_scalar(
+            "SELECT row_to_json(sp) FROM \
+             (SELECT id, era_id, tone, vocabulary, themes, updated_at \
+              FROM style_profiles WHERE persona_id=$1) sp",
+        )
+        .bind(persona_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+
+        let persona_entry = serde_json::json!({
+            "persona": persona_json,
+            "eras": eras_json,
+            "style_profiles": style_json,
+        });
+
+        zip.start_file(format!("personas/{persona_id}/persona.json"), options)?;
+        zip.write_all(serde_json::to_vec_pretty(&persona_entry)?.as_slice())?;
+
+        // documents.json manifest
+        let docs_json: Vec<serde_json::Value> = sqlx::query_scalar(
+            "SELECT row_to_json(d) FROM \
+             (SELECT id, kind, mime_type, title, source, word_count, duration_sec, \
+                     status, created_at, ingested_at \
+              FROM documents WHERE persona_id=$1 ORDER BY created_at) d",
+        )
+        .bind(persona_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+
+        zip.start_file(format!("personas/{persona_id}/documents.json"), options)?;
+        zip.write_all(serde_json::to_vec_pretty(&docs_json)?.as_slice())?;
+
+        // Per-document files — read from disk inside spawn_blocking
+        let doc_rows: Vec<(Uuid, String, String)> = sqlx::query_as(
+            "SELECT id, original_path, mime_type FROM documents WHERE persona_id=$1",
+        )
+        .bind(persona_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+
+        for (doc_id, original_path, _mime) in &doc_rows {
+            let path_owned = original_path.clone();
+            let doc_id_owned = *doc_id;
+            let read_result = tokio::task::spawn_blocking(move || {
+                let p = std::path::Path::new(&path_owned);
+                if p.exists() {
+                    std::fs::read(p).ok().map(|b| {
+                        let ext = p
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("bin")
+                            .to_owned();
+                        (b, ext)
+                    })
+                } else {
+                    None
+                }
+            })
+            .await
+            .unwrap_or(None);
+
+            match read_result {
+                Some((bytes, ext)) => {
+                    zip.start_file(
+                        format!("personas/{persona_id}/documents/{doc_id_owned}.{ext}"),
+                        options,
+                    )?;
+                    zip.write_all(&bytes)?;
+                }
+                None => {
+                    tracing::warn!(doc_id=%doc_id, path=%original_path, "user_export: document file not found or unreadable, skipping");
+                }
+            }
+        }
+
+        // chats
+        let sessions: Vec<(Uuid,)> =
+            sqlx::query_as("SELECT id FROM chat_sessions WHERE persona_id=$1 ORDER BY created_at")
+                .bind(persona_id)
+                .fetch_all(&state.db)
+                .await
+                .unwrap_or_default();
+
+        for (session_id,) in sessions {
+            let messages_json: Vec<serde_json::Value> = sqlx::query_scalar(
+                "SELECT row_to_json(m) FROM \
+                 (SELECT id, role, content, created_at FROM messages \
+                  WHERE session_id=$1 ORDER BY created_at) m",
+            )
+            .bind(session_id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+
+            let session_json_val: Option<serde_json::Value> = sqlx::query_scalar(
+                "SELECT row_to_json(s) FROM \
+                 (SELECT id, title, created_at FROM chat_sessions WHERE id=$1) s",
+            )
+            .bind(session_id)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or(None);
+
+            let chat_entry = serde_json::json!({
+                "session": session_json_val,
+                "messages": messages_json,
+            });
+
+            zip.start_file(
+                format!("personas/{persona_id}/chats/{session_id}.json"),
+                options,
+            )?;
+            zip.write_all(serde_json::to_vec_pretty(&chat_entry)?.as_slice())?;
+        }
+
+        // Update progress
+        let pct = ((i as i64 + 1) * 90 / total).min(90);
+        update_job_payload(state, job_id, serde_json::json!({ "progress_pct": pct })).await;
+    }
+
+    // 3. audit_log.json
+    let audit_json: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT row_to_json(a) FROM \
+         (SELECT id, action, resource_type, resource_id, ip, metadata, created_at \
+          FROM audit_log WHERE user_id=$1 ORDER BY created_at) a",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    zip.start_file("audit_log.json", options)?;
+    zip.write_all(serde_json::to_vec_pretty(&audit_json)?.as_slice())?;
+
+    let cursor = zip.finish()?;
+    let zip_bytes = cursor.into_inner();
+
+    // Write to disk: /data/exports/<user_id>/<job_id>.zip
+    let exports_dir = state
+        .config
+        .data_dir
+        .join("exports")
+        .join(user_id.to_string());
+    tokio::fs::create_dir_all(&exports_dir).await?;
+    let export_path = exports_dir.join(format!("{job_id}.zip"));
+    tokio::fs::write(&export_path, &zip_bytes).await?;
+
+    update_job_payload(
+        state,
+        job_id,
+        serde_json::json!({
+            "progress_pct": 100,
+            "export_path": export_path.to_string_lossy()
+        }),
+    )
+    .await;
+
+    tracing::info!(user_id=%user_id, job_id=%job_id, path=%export_path.display(), "user_export: complete");
+    Ok(())
+}
+
+async fn update_job_payload(state: &AppState, job_id: Uuid, payload: serde_json::Value) {
+    let _ = sqlx::query("UPDATE jobs SET payload = payload || $1::jsonb WHERE id = $2")
+        .bind(payload)
+        .bind(job_id)
+        .execute(&state.db)
+        .await;
+}
+
+// ─── user_delete ──────────────────────────────────────────────────────────────
+
+async fn run_user_delete(state: &AppState, user_id: Uuid) -> Result<(), anyhow::Error> {
+    // Re-check last-admin guard inside the job to close the TOCTOU window (spec §7.23)
+    let role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM users WHERE id=$1 AND status='disabled'")
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or(None);
+
+    if role.as_deref() == Some("admin") {
+        let active_admins: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE role='admin' AND status='active'")
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or(1);
+        if active_admins == 0 {
+            return Err(anyhow::anyhow!(
+                "user_delete: aborted — would leave no active admins"
+            ));
+        }
+    }
+
+    // Fetch all persona IDs for user
+    let persona_ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM personas WHERE user_id=$1")
+        .bind(user_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+
+    for persona_id in &persona_ids {
+        // Delete upload files
+        let uploads_dir = state
+            .config
+            .data_dir
+            .join("uploads")
+            .join(persona_id.to_string());
+        if uploads_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&uploads_dir) {
+                tracing::warn!(error=%e, path=%uploads_dir.display(), "user_delete: failed to remove uploads dir");
+            }
+        }
+
+        // Delete avatar file (any extension)
+        let avatars_dir = state.config.data_dir.join("avatars");
+        if avatars_dir.exists() {
+            if let Ok(rd) = std::fs::read_dir(&avatars_dir) {
+                for entry in rd.flatten() {
+                    let fname = entry.file_name();
+                    let fname_str = fname.to_string_lossy();
+                    if fname_str.starts_with(&persona_id.to_string()) {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
+
+    // Delete exports
+    let exports_dir = state
+        .config
+        .data_dir
+        .join("exports")
+        .join(user_id.to_string());
+    if exports_dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&exports_dir) {
+            tracing::warn!(error=%e, path=%exports_dir.display(), "user_delete: failed to remove exports dir");
+        }
+    }
+
+    // Hard delete user row — cascade handles everything else
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(user_id)
+        .execute(&state.db)
+        .await?;
+
+    tracing::info!(user_id=%user_id, "user_delete: complete");
+    Ok(())
 }
 
 fn extract_document_id(payload: &serde_json::Value) -> Option<Uuid> {

@@ -1,0 +1,3 @@
+[Network]
+NetworkName=persona-ai
+Driver=bridge

@@ -1,0 +1,52 @@
+services:
+  db:
+    image: docker.io/pgvector/pgvector:pg16
+    restart: always
+    environment:
+      POSTGRES_USER: persona
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: persona
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - /opt/persona-ai/secrets/db_password:/run/secrets/db_password:ro,Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U persona"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: localhost/persona-ai/backend:latest
+    restart: always
+    env_file: /opt/persona-ai/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - /data:/data:Z
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  web:
+    image: localhost/persona-ai/frontend:latest
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data:Z
+      - caddy_config:/config:Z
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

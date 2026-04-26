@@ -1,0 +1,19 @@
+[Unit]
+Description=Persona AI — Rust backend
+After=persona-ai-db.service network-online.target
+Requires=persona-ai-db.service
+
+[Container]
+Image=localhost/persona-ai/backend:latest
+ContainerName=persona-ai-backend
+EnvironmentFile=/opt/persona-ai/.env
+Volume=/data:/data:Z
+Network=persona-ai.network
+PublishPort=127.0.0.1:8080:8080
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target

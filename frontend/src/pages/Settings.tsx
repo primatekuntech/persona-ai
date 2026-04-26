@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,6 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import toast from "react-hot-toast";
+
+const deleteSchema = z.object({
+  password: z.string().min(1, "Password is required."),
+  confirm: z.string(),
+}).refine((d) => d.confirm === "DELETE", {
+  message: "Type DELETE to confirm.",
+  path: ["confirm"],
+});
+
+type DeleteFormData = z.infer<typeof deleteSchema>;
 
 const pwSchema = z
   .object({
@@ -27,6 +37,9 @@ export default function Settings() {
   const { data: me } = useMe();
   const revokeAll = useRevokeAllSessions();
   const [revokeConfirm, setRevokeConfirm] = useState(false);
+  const [exportStatus, setExportStatus] = useState<"idle" | "pending" | "done">("idle");
+  const [exportUrl, setExportUrl] = useState<string | null>(null);
+  const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const {
     register,
@@ -34,6 +47,75 @@ export default function Settings() {
     reset,
     formState: { errors, isSubmitting },
   } = useForm<PwFormData>({ resolver: zodResolver(pwSchema) });
+
+  const {
+    register: registerDelete,
+    handleSubmit: handleDelete,
+    formState: { errors: deleteErrors, isSubmitting: deleteSubmitting },
+  } = useForm<DeleteFormData>({ resolver: zodResolver(deleteSchema) });
+
+  async function onExportData() {
+    setExportStatus("pending");
+    setExportUrl(null);
+    try {
+      const res = await api<{ job_id: string }>("/api/auth/export", { method: "POST" });
+      const jobId = res.job_id;
+
+      let attempts = 0;
+      exportPollRef.current = setInterval(async () => {
+        attempts++;
+        try {
+          const poll = await api<{ status: string; download_url?: string | null }>(
+            `/api/auth/export/${jobId}`,
+          );
+          if (poll.download_url) {
+            setExportStatus("done");
+            setExportUrl(poll.download_url);
+            if (exportPollRef.current) clearInterval(exportPollRef.current);
+          } else if (poll.status === "failed" || poll.status === "expired") {
+            setExportStatus("idle");
+            toast.error("Export failed. Please try again.");
+            if (exportPollRef.current) clearInterval(exportPollRef.current);
+          }
+        } catch {
+          // continue polling
+        }
+        if (attempts >= 24) {
+          if (exportPollRef.current) clearInterval(exportPollRef.current);
+          setExportStatus("idle");
+          toast.error("Export timed out. Please try again.");
+        }
+      }, 5000);
+    } catch (e) {
+      setExportStatus("idle");
+      if (e instanceof ApiError) {
+        toast.error(e.message);
+      } else {
+        toast.error("Export failed. Please try again.");
+      }
+    }
+  }
+
+  async function onDeleteAccount(data: DeleteFormData) {
+    try {
+      await api("/api/auth/delete", {
+        method: "POST",
+        body: JSON.stringify({ password: data.password, confirm: "DELETE" }),
+      });
+      toast.success("Account deleted.");
+      window.location.href = "/login";
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 400 || e.status === 422)) {
+        toast.error("Password is incorrect.");
+      } else if (e instanceof ApiError && e.status === 409) {
+        toast.error(e.message);
+      } else if (e instanceof ApiError) {
+        toast.error(e.message);
+      } else {
+        toast.error("Something went wrong. Please try again.");
+      }
+    }
+  }
 
   async function onChangePassword(data: PwFormData) {
     try {
@@ -183,6 +265,81 @@ export default function Settings() {
               </Button>
             )}
           </CardFooter>
+        </Card>
+
+        {/* Export account data */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Export account data</CardTitle>
+            <CardDescription>
+              Download a ZIP archive of all your personas, documents, transcripts, and chat
+              history. Exports are generated on demand and may take a moment.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={onExportData}
+              disabled={exportStatus === "pending"}
+            >
+              {exportStatus === "pending" ? "Preparing export…" : "Export my data"}
+            </Button>
+            {exportStatus === "done" && exportUrl && (
+              <a
+                href={exportUrl}
+                download
+                className="text-sm font-medium text-[var(--accent)] underline underline-offset-2"
+              >
+                Download export
+              </a>
+            )}
+          </CardFooter>
+        </Card>
+
+        {/* Delete account */}
+        <Card>
+          <form onSubmit={handleDelete(onDeleteAccount)}>
+            <CardHeader>
+              <CardTitle className="text-[var(--danger)]">Delete account</CardTitle>
+              <CardDescription>
+                Permanently delete your account and all associated data. This action cannot be
+                undone.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="delete_password">Current password</Label>
+                <Input
+                  id="delete_password"
+                  type="password"
+                  autoComplete="current-password"
+                  {...registerDelete("password")}
+                />
+                {deleteErrors.password && (
+                  <p className="text-xs text-[var(--danger)]">{deleteErrors.password.message}</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="delete_confirm">
+                  Type <strong>DELETE</strong> to confirm
+                </Label>
+                <Input
+                  id="delete_confirm"
+                  type="text"
+                  placeholder="DELETE"
+                  {...registerDelete("confirm")}
+                />
+                {deleteErrors.confirm && (
+                  <p className="text-xs text-[var(--danger)]">{deleteErrors.confirm.message}</p>
+                )}
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" variant="destructive" disabled={deleteSubmitting}>
+                {deleteSubmitting ? "Deleting…" : "Delete my account"}
+              </Button>
+            </CardFooter>
+          </form>
         </Card>
       </div>
     </div>

@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod auth;
 pub mod chat;
+pub mod data_rights;
 pub mod documents;
 pub mod export;
 pub mod health;
@@ -10,6 +11,7 @@ pub mod profile;
 use crate::state::AppState;
 use axum::{
     extract::DefaultBodyLimit,
+    middleware,
     routing::{delete, get, patch, post},
     Router,
 };
@@ -140,7 +142,19 @@ pub fn build_router(state: AppState) -> Router {
             post(chat_handlers::post_message).layer(DefaultBodyLimit::max(32 * 1024)),
         )
         // Export
-        .route("/api/chats/:session_id/export", get(export::export_session));
+        .route("/api/chats/:session_id/export", get(export::export_session))
+        // Data rights
+        .route("/api/auth/export", post(data_rights::request_export))
+        .route(
+            "/api/auth/export/:job_id",
+            get(data_rights::get_export_status),
+        )
+        .route(
+            "/api/auth/export/:job_id/download",
+            get(data_rights::download_export),
+        )
+        .route("/api/auth/delete", post(data_rights::delete_account))
+        .layer(middleware::from_fn(crate::auth::csrf::csrf_middleware));
 
     // Document upload — rate-limited (60/60min) + 512 MB body limit for audio
     let upload_route = Router::new()
@@ -155,6 +169,7 @@ pub fn build_router(state: AppState) -> Router {
     // POST /api/admin/invites is rate-limited per sprint spec §1.11 to prevent spam.
     let admin_write_routes = Router::new()
         .route("/api/admin/invites", post(admin::create_invite))
+        .layer(middleware::from_fn(crate::auth::csrf::csrf_middleware))
         .layer(GovernorLayer {
             config: admin_write_governor,
         });
@@ -164,7 +179,13 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/admin/invites/:id", delete(admin::revoke_invite))
         .route("/api/admin/users", get(admin::list_users))
         .route("/api/admin/users/:id", patch(admin::patch_user))
-        .route("/api/admin/users/:id/reset", post(admin::admin_reset_user));
+        .route("/api/admin/users/:id/reset", post(admin::admin_reset_user))
+        .route("/api/admin/jobs", get(admin::list_jobs))
+        .route("/api/admin/jobs/:id/retry", post(admin::retry_job))
+        .route("/api/admin/jobs/:id", delete(admin::cancel_job))
+        .route("/api/admin/errors", get(admin::list_errors))
+        .route("/api/admin/audit", get(admin::list_audit))
+        .layer(middleware::from_fn(crate::auth::csrf::csrf_middleware));
 
     let health_routes = Router::new()
         .route("/healthz", get(health::healthz))

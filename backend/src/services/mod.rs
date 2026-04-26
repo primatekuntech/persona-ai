@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod analysis_runner;
 pub mod broadcast;
 pub mod chunker;
+pub mod cleanup;
 pub mod embedder;
 pub mod idempotency;
 pub mod ingest;
