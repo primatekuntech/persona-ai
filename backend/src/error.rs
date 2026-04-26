@@ -49,6 +49,12 @@ pub enum AppError {
     #[error("audio too long")]
     AudioTooLong,
 
+    #[error("generation concurrency exceeded")]
+    GenerationConcurrencyExceeded,
+
+    #[error("server busy")]
+    ServerBusy,
+
     #[error("ingest failed: {reason}")]
     IngestFailed { reason: String },
 
@@ -141,6 +147,18 @@ impl IntoResponse for AppError {
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "audio_too_long",
                 "Audio file exceeds the duration limit.".to_owned(),
+                None,
+            ),
+            AppError::GenerationConcurrencyExceeded => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "generation_concurrency_exceeded",
+                "Too many concurrent generations. Try again shortly.".to_owned(),
+                None,
+            ),
+            AppError::ServerBusy => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "server_busy",
+                "Server is busy. Try again shortly.".to_owned(),
                 None,
             ),
             AppError::IngestFailed { reason } => (

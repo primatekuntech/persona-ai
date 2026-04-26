@@ -83,7 +83,7 @@ export default function PersonaWorkspaceLayout() {
           <SubNavItem to={`${base}/dashboard`} icon={LayoutDashboard} label="Dashboard" />
           <SubNavItem to={`${base}/documents`} icon={BookOpen} label="Documents" />
           <SubNavItem to={`${base}/upload`} icon={Upload} label="Upload" />
-          <SubNavItem to={`${base}/chat`} icon={MessageSquare} label="Chat" disabled />
+          <SubNavItem to={`${base}/chat`} icon={MessageSquare} label="Chat" />
           <SubNavItem to={`${base}/eras`} icon={Calendar} label="Eras" />
           <SubNavItem to={`${base}/settings`} icon={Settings} label="Settings" />
         </nav>

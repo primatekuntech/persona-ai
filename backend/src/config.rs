@@ -20,6 +20,7 @@ pub struct AppConfig {
     pub model_dir: PathBuf,
     pub worker_threads: usize,
     pub dev_cors: bool,
+    pub max_concurrent_generation: usize,
 }
 
 impl Default for AppConfig {
@@ -38,6 +39,7 @@ impl Default for AppConfig {
             model_dir: PathBuf::from("/data/models"),
             worker_threads: (num_cpus::get().saturating_sub(1)).max(1),
             dev_cors: false,
+            max_concurrent_generation: 2,
         }
     }
 }

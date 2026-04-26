@@ -1,7 +1,9 @@
 /// Shared application state threaded through axum via `State<AppState>`.
-use crate::{config::AppConfig, email::ResendClient, services::broadcast};
+use crate::{config::AppConfig, email::ResendClient, services::broadcast, services::llm::Llm};
+use dashmap::DashMap;
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicU8, Arc};
+use uuid::Uuid;
 
 /// Model integrity status populated at startup.
 #[derive(Debug, Clone)]
@@ -38,4 +40,10 @@ pub struct AppState {
     /// Broadcast channel for document ingest progress events (SSE).
     /// `broadcast::Sender` is already `Clone`, so no Arc needed.
     pub ingest_tx: broadcast::Sender,
+    /// Server-wide LLM generation semaphore (capacity = config.max_concurrent_generation).
+    pub generation_semaphore: Arc<tokio::sync::Semaphore>,
+    /// Per-user in-flight generation count (cap 2 per user).
+    pub user_generation_counts: Arc<DashMap<Uuid, Arc<AtomicU8>>>,
+    /// Local LLM; None if feature absent or model file missing.
+    pub llm: Option<Arc<Llm>>,
 }
