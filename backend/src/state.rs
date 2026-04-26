@@ -1,5 +1,5 @@
 /// Shared application state threaded through axum via `State<AppState>`.
-use crate::{config::AppConfig, email::ResendClient};
+use crate::{config::AppConfig, email::ResendClient, services::broadcast};
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -35,4 +35,7 @@ pub struct AppState {
     pub config: Arc<AppConfig>,
     pub email: Arc<ResendClient>,
     pub readiness: Arc<std::sync::RwLock<ReadinessState>>,
+    /// Broadcast channel for document ingest progress events (SSE).
+    /// `broadcast::Sender` is already `Clone`, so no Arc needed.
+    pub ingest_tx: broadcast::Sender,
 }

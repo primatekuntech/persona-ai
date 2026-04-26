@@ -44,6 +44,14 @@ pub enum AppError {
     #[error("gone")]
     Gone { code: &'static str },
 
+    /// Returned by transcriber when audio exceeds the duration cap.
+    #[allow(dead_code)]
+    #[error("audio too long")]
+    AudioTooLong,
+
+    #[error("ingest failed: {reason}")]
+    IngestFailed { reason: String },
+
     #[error(transparent)]
     Database(#[from] sqlx::Error),
 
@@ -127,6 +135,18 @@ impl IntoResponse for AppError {
                 StatusCode::GONE,
                 *code,
                 "Resource no longer available.".to_owned(),
+                None,
+            ),
+            AppError::AudioTooLong => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "audio_too_long",
+                "Audio file exceeds the duration limit.".to_owned(),
+                None,
+            ),
+            AppError::IngestFailed { reason } => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "ingest_failed",
+                reason.clone(),
                 None,
             ),
             AppError::Database(e) => {

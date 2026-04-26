@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth;
+pub mod documents;
 pub mod health;
 pub mod personas;
 
@@ -30,6 +31,15 @@ pub fn build_router(state: AppState) -> Router {
             .burst_size(5)
             .finish()
             .expect("valid admin governor config"),
+    );
+
+    // Upload rate limit: 60 req / 60 min per IP (spec §06 conventions).
+    let upload_governor = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_millisecond(60_000) // 1 req per minute sustained
+            .burst_size(60) // burst of 60 allowed
+            .finish()
+            .expect("valid upload governor config"),
     );
 
     let auth_routes = Router::new()
@@ -69,7 +79,42 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/personas/:id/eras/:era_id",
             delete(personas::delete_era),
+        )
+        // Documents — list + SSE (no body limit adjustment needed for these)
+        .route(
+            "/api/personas/:id/documents",
+            get(documents::list_documents),
+        )
+        .route(
+            "/api/personas/:id/documents/events",
+            get(documents::document_events),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id",
+            get(documents::get_document),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id",
+            delete(documents::delete_document),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id/reingest",
+            post(documents::reingest_document),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id/transcript",
+            get(documents::get_transcript),
         );
+
+    // Document upload — rate-limited (60/60min) + 512 MB body limit for audio
+    let upload_route = Router::new()
+        .route(
+            "/api/personas/:id/documents",
+            post(documents::upload_document).layer(DefaultBodyLimit::max(512 * 1024 * 1024)),
+        )
+        .layer(GovernorLayer {
+            config: upload_governor,
+        });
 
     // POST /api/admin/invites is rate-limited per sprint spec §1.11 to prevent spam.
     let admin_write_routes = Router::new()
@@ -92,6 +137,7 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .merge(auth_routes)
         .merge(protected_routes)
+        .merge(upload_route)
         .merge(admin_write_routes)
         .merge(admin_routes)
         .merge(health_routes)

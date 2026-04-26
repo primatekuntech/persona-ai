@@ -1,3 +1,4 @@
+pub mod documents;
 pub mod eras;
 pub mod invites;
 pub mod personas;
