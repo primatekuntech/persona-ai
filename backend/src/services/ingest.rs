@@ -124,7 +124,8 @@ pub async fn run_ingest(
 
             // Save transcript; store relative path so handlers can join with data_dir.
             let transcript_dir = data_dir.join("transcripts");
-            std::fs::create_dir_all(&transcript_dir)?;
+            std::fs::create_dir_all(&transcript_dir)
+                .map_err(|e| crate::services::transcriber::TranscriberError::Other(e.into()))?;
             let tpath_abs = transcript_dir.join(format!("{document_id}.txt"));
             std::fs::write(&tpath_abs, &transcript_text)
                 .map_err(|e| crate::services::transcriber::TranscriberError::Other(e.into()))?;

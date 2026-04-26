@@ -237,6 +237,182 @@ async fn quota_increment_prevents_exceed(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn delete_with_quota_decrements_atomically(pool: PgPool) {
+    let user_id = seed_user(&pool).await;
+    let persona_id = seed_persona(&pool, user_id).await;
+    // Start with 5000 bytes used, 1 doc
+    sqlx::query(
+        "UPDATE users SET quota_storage_bytes=1000000, quota_doc_count=100, \
+         current_storage_bytes=5000, current_doc_count=1 WHERE id=$1",
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let doc_id = insert_doc(&pool, persona_id, user_id, "dqhash", 5000, None).await;
+
+    // Use the same transaction pattern as delete_with_quota
+    let mut tx = pool.begin().await.unwrap();
+    let result: Option<(i64,)> =
+        sqlx::query_as("DELETE FROM documents WHERE id=$1 AND user_id=$2 RETURNING size_bytes")
+            .bind(doc_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .unwrap();
+    let (size,) = result.expect("document should exist");
+    sqlx::query(
+        "UPDATE users SET \
+         current_storage_bytes=GREATEST(0, current_storage_bytes - $1), \
+         current_doc_count=GREATEST(0, current_doc_count - 1) WHERE id=$2",
+    )
+    .bind(size)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    let (storage, doc_count): (i64, i32) =
+        sqlx::query_as("SELECT current_storage_bytes, current_doc_count FROM users WHERE id=$1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(storage, 0, "storage should decrement to 0 (was 5000, doc was 5000)");
+    assert_eq!(doc_count, 0, "doc_count should decrement to 0");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn delete_with_quota_noop_for_missing_doc(pool: PgPool) {
+    let user_id = seed_user(&pool).await;
+    sqlx::query(
+        "UPDATE users SET current_storage_bytes=1000, current_doc_count=2 WHERE id=$1",
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let missing_id = Uuid::now_v7();
+    let mut tx = pool.begin().await.unwrap();
+    let result: Option<(i64,)> =
+        sqlx::query_as("DELETE FROM documents WHERE id=$1 AND user_id=$2 RETURNING size_bytes")
+            .bind(missing_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .unwrap();
+    tx.rollback().await.ok();
+
+    assert!(result.is_none(), "missing doc should return None");
+
+    // Quota must be untouched
+    let (storage, doc_count): (i64, i32) =
+        sqlx::query_as("SELECT current_storage_bytes, current_doc_count FROM users WHERE id=$1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(storage, 1000);
+    assert_eq!(doc_count, 2);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn update_status_stores_correctly(pool: PgPool) {
+    let user_id = seed_user(&pool).await;
+    let persona_id = seed_persona(&pool, user_id).await;
+    let doc_id = insert_doc(&pool, persona_id, user_id, "statushash", 100, None).await;
+
+    sqlx::query(
+        "UPDATE documents SET status=$1, progress_pct=$2, error=$3 WHERE id=$4",
+    )
+    .bind("transcribing")
+    .bind(42i16)
+    .bind(Option::<&str>::None)
+    .bind(doc_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, pct, error): (String, Option<i16>, Option<String>) = sqlx::query_as(
+        "SELECT status, progress_pct, error FROM documents WHERE id=$1",
+    )
+    .bind(doc_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(status, "transcribing");
+    assert_eq!(pct, Some(42));
+    assert!(error.is_none());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn update_ingested_marks_done_with_metadata(pool: PgPool) {
+    let user_id = seed_user(&pool).await;
+    let persona_id = seed_persona(&pool, user_id).await;
+    let doc_id = insert_doc(&pool, persona_id, user_id, "donehash", 100, None).await;
+
+    sqlx::query(
+        "UPDATE documents SET status='done', ingested_at=now(), progress_pct=NULL, \
+         word_count=$1, transcript_path=$2 WHERE id=$3",
+    )
+    .bind(1234i32)
+    .bind("transcripts/some-id.txt")
+    .bind(doc_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, wc, tp, ingested): (String, Option<i32>, Option<String>, bool) =
+        sqlx::query_as(
+            "SELECT status, word_count, transcript_path, ingested_at IS NOT NULL FROM documents WHERE id=$1",
+        )
+        .bind(doc_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(status, "done");
+    assert_eq!(wc, Some(1234));
+    assert_eq!(tp.as_deref(), Some("transcripts/some-id.txt"));
+    assert!(ingested, "ingested_at should be set");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn content_hash_isolated_across_personas(pool: PgPool) {
+    let user_id = seed_user(&pool).await;
+    let persona_a = seed_persona(&pool, user_id).await;
+    let persona_b = seed_persona(&pool, user_id).await;
+    set_quota(&pool, user_id, 1_000_000_000, 1000).await;
+
+    let doc_id = insert_doc(&pool, persona_a, user_id, "samehash", 100, None).await;
+
+    // Same hash in persona_a → found
+    let found: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM documents WHERE persona_id=$1 AND content_hash=$2")
+            .bind(persona_a)
+            .bind("samehash")
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+    assert_eq!(found, Some(doc_id));
+
+    // Same hash queried for persona_b → not found (cross-persona isolation)
+    let not_found: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM documents WHERE persona_id=$1 AND content_hash=$2")
+            .bind(persona_b)
+            .bind("samehash")
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+    assert!(not_found.is_none(), "hash lookup must be scoped to persona");
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn list_cursor_pagination(pool: PgPool) {
     let user_id = seed_user(&pool).await;
     let persona_id = seed_persona(&pool, user_id).await;
