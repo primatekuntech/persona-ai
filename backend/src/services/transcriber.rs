@@ -48,7 +48,7 @@ impl Transcriber {
         progress_cb: impl Fn(i16),
     ) -> Result<(String, i32), TranscriberError> {
         // Step 1: Probe duration with ffprobe
-        let duration_sec = probe_duration(audio_path).map_err(|e| TranscriberError::Other(e))?;
+        let duration_sec = probe_duration(audio_path).map_err(TranscriberError::Other)?;
         if duration_sec > MAX_DURATION_SEC {
             return Err(TranscriberError::AudioTooLong);
         }

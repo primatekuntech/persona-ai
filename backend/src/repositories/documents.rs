@@ -237,19 +237,6 @@ pub async fn update_ingested(
     Ok(())
 }
 
-/// Delete a document scoped to user. Returns the size_bytes for quota decrement, or None if not found.
-pub async fn delete(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<Option<i64>, AppError> {
-    let result: Option<(i64,)> =
-        sqlx::query_as("DELETE FROM documents WHERE id = $1 AND user_id = $2 RETURNING size_bytes")
-            .bind(id)
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(AppError::Database)?;
-
-    Ok(result.map(|(sz,)| sz))
-}
-
 /// Delete a document and atomically decrement the user's quota in one transaction.
 /// Returns the size_bytes of the deleted document, or None if not found.
 pub async fn delete_with_quota(

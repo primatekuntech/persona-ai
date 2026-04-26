@@ -218,7 +218,7 @@ pub async fn upload_document(
 
     // Validate against allow-list
     let kind = kind_for_mime(mime_type).ok_or_else(|| {
-        let _ = tokio::task::spawn(async move {
+        tokio::task::spawn(async move {
             let _ = tokio::fs::remove_file(&tmp_path).await;
         });
         AppError::UnsupportedMediaType
@@ -611,18 +611,15 @@ pub async fn document_events(
     let rx = state.ingest_tx.subscribe();
     let user_id = ctx.user_id;
 
-    let stream = BroadcastStream::new(rx).filter_map(move |result| {
-        let future = async move {
-            let event = result.ok()?;
-            if event.user_id != user_id || event.persona_id != persona_id {
-                return None;
-            }
-            let data = serde_json::to_string(&event).ok()?;
-            Some(Ok::<_, Infallible>(
-                axum::response::sse::Event::default().data(data),
-            ))
-        };
-        future
+    let stream = BroadcastStream::new(rx).filter_map(move |result| async move {
+        let event = result.ok()?;
+        if event.user_id != user_id || event.persona_id != persona_id {
+            return None;
+        }
+        let data = serde_json::to_string(&event).ok()?;
+        Some(Ok::<_, Infallible>(
+            axum::response::sse::Event::default().data(data),
+        ))
     });
 
     axum::response::sse::Sse::new(stream).keep_alive(
