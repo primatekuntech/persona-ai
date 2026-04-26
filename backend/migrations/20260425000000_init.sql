@@ -273,6 +273,11 @@ CREATE TABLE jobs (
 CREATE INDEX jobs_status_scheduled_idx ON jobs (status, scheduled_at);
 CREATE INDEX jobs_user_id_status_idx ON jobs (user_id, status);
 CREATE INDEX jobs_persona_id_status_idx ON jobs (persona_id, status);
+-- Coalescing index: prevents duplicate recompute_profile jobs for the same (persona, era) key.
+-- INSERT ... ON CONFLICT DO NOTHING against this index makes duplicate enqueues no-ops.
+CREATE UNIQUE INDEX jobs_recompute_profile_uniq
+    ON jobs ((payload->>'persona_id'), (payload->>'era_id'))
+    WHERE kind = 'recompute_profile' AND status = 'queued';
 
 -- =============================================================================
 -- Idempotency

@@ -218,9 +218,17 @@ async fn dispatch(state: &AppState, job: &JobRow) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         "recompute_profile" => {
-            // Will be implemented in Sprint 4
-            tracing::debug!(job_id=%job.id, "recompute_profile job queued — skipping (sprint 4)");
-            Ok(())
+            let persona_id = job.payload["persona_id"]
+                .as_str()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .ok_or_else(|| "recompute_profile missing persona_id".to_string())?;
+            let era_id = job.payload["era_id"]
+                .as_str()
+                .and_then(|s| Uuid::parse_str(s).ok());
+
+            crate::services::analysis_runner::run_recompute_profile(&state.db, persona_id, era_id)
+                .await
+                .map_err(|e| e.to_string())
         }
         other => {
             tracing::warn!(kind=%other, "unknown job kind — skipping");

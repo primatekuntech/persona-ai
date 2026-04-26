@@ -3,6 +3,7 @@ pub mod auth;
 pub mod documents;
 pub mod health;
 pub mod personas;
+pub mod profile;
 
 use crate::state::AppState;
 use axum::{
@@ -10,6 +11,7 @@ use axum::{
     routing::{delete, get, patch, post},
     Router,
 };
+use profile as profile_handlers;
 use std::sync::Arc;
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 
@@ -104,6 +106,19 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/personas/:id/documents/:doc_id/transcript",
             get(documents::get_transcript),
+        )
+        // Profile
+        .route(
+            "/api/personas/:id/profile",
+            get(profile_handlers::get_persona_profile),
+        )
+        .route(
+            "/api/personas/:id/profile/recompute",
+            post(profile_handlers::recompute_profile),
+        )
+        .route(
+            "/api/personas/:id/eras/:era_id/profile",
+            get(profile_handlers::get_era_profile),
         );
 
     // Document upload — rate-limited (60/60min) + 512 MB body limit for audio

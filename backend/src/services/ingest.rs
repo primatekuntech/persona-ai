@@ -293,13 +293,15 @@ pub async fn run_ingest(
         }
     }
 
-    // Step 4: Enqueue recompute_profile job for the persona
+    // Step 4: Enqueue recompute_profile job for the persona (coalesced via unique partial index)
     sqlx::query(
-        "INSERT INTO jobs (kind, user_id, persona_id, payload) VALUES ('recompute_profile', $1, $2, $3)",
+        "INSERT INTO jobs (kind, user_id, persona_id, payload)
+         VALUES ('recompute_profile', $1, $2, $3)
+         ON CONFLICT DO NOTHING",
     )
     .bind(user_id)
     .bind(persona_id)
-    .bind(serde_json::json!({ "persona_id": persona_id }))
+    .bind(serde_json::json!({ "persona_id": persona_id.to_string(), "era_id": serde_json::Value::Null }))
     .execute(pool)
     .await
     .map_err(AppError::Database)?;
