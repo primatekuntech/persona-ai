@@ -11,6 +11,7 @@ pub mod llm;
 pub mod model_check;
 pub mod parser;
 pub mod prompt;
+pub mod providers;
 pub mod retriever;
 pub mod transcriber;
 pub mod worker;

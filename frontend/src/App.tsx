@@ -19,6 +19,7 @@ import PersonaSettings from "@/pages/personas/PersonaSettings";
 import DocumentsPage from "@/pages/personas/Documents";
 import UploadPage from "@/pages/personas/Upload";
 import ChatPage from "@/pages/personas/Chat";
+import Integrations from "@/pages/Integrations";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { data, isLoading, isError } = useMe();
@@ -74,6 +75,7 @@ export default function App() {
         >
           <Route path="/personas" element={<Personas />} />
           <Route path="/settings/account" element={<Settings />} />
+          <Route path="/settings/integrations" element={<Integrations />} />
           <Route
             path="/admin/users"
             element={
