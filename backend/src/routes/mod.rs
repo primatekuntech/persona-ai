@@ -2,6 +2,7 @@ pub mod admin;
 pub mod auth;
 pub mod chat;
 pub mod documents;
+pub mod export;
 pub mod health;
 pub mod personas;
 pub mod profile;
@@ -137,7 +138,9 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/chats/:session_id/messages",
             post(chat_handlers::post_message).layer(DefaultBodyLimit::max(32 * 1024)),
-        );
+        )
+        // Export
+        .route("/api/chats/:session_id/export", get(export::export_session));
 
     // Document upload — rate-limited (60/60min) + 512 MB body limit for audio
     let upload_route = Router::new()

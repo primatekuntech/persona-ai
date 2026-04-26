@@ -9,6 +9,7 @@ import {
   streamChat,
   type Message,
   type SseEvent,
+  type ChatSession,
 } from "@/lib/chats";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,18 +21,131 @@ import {
   ChevronDown,
   ChevronUp,
   Send,
+  Download,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function triggerExport(sessionId: string, format: "md" | "docx", messageId?: string) {
+  const params = new URLSearchParams({ format });
+  if (messageId) params.set("message_ids", messageId);
+  window.location.href = `/api/chats/${sessionId}/export?${params}`;
+}
+
+// ─── Session export dialog ────────────────────────────────────────────────────
+
+function ExportDialog({
+  session,
+  messages,
+  onClose,
+}: {
+  session: ChatSession;
+  messages: Message[];
+  onClose: () => void;
+}) {
+  const asstMessages = messages.filter((m) => m.role === "assistant" && m.content);
+  const [selected, setSelected] = useState<Set<string>>(
+    new Set(asstMessages.map((m) => m.id))
+  );
+  const [format, setFormat] = useState<"md" | "docx">("docx");
+  const [title, setTitle] = useState(session.title ?? "");
+
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const handleExport = () => {
+    const ids = Array.from(selected).join(",");
+    const params = new URLSearchParams({ format });
+    if (ids) params.set("message_ids", ids);
+    if (title) params.set("title", title);
+    window.location.href = `/api/chats/${session.id}/export?${params}`;
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-[var(--bg)] border border-[var(--border)] rounded-lg shadow-xl w-full max-w-md p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-[var(--text)]">Export session</h2>
+          <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text)]">
+            <X size={14} />
+          </button>
+        </div>
+
+        <label className="block text-xs text-[var(--text-subtle)] mb-1">Title</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="(auto)"
+          className="w-full text-sm bg-[var(--bg-subtle)] border border-[var(--border)] rounded px-3 py-1.5 mb-4 text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+        />
+
+        <label className="block text-xs text-[var(--text-subtle)] mb-1">Messages</label>
+        <div className="border border-[var(--border)] rounded divide-y divide-[var(--border)] max-h-48 overflow-y-auto mb-4">
+          {asstMessages.length === 0 && (
+            <p className="text-xs text-[var(--text-muted)] px-3 py-2">No assistant messages yet.</p>
+          )}
+          {asstMessages.map((msg) => (
+            <label key={msg.id} className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-[var(--bg-subtle)]">
+              <input
+                type="checkbox"
+                checked={selected.has(msg.id)}
+                onChange={() => toggle(msg.id)}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="text-xs text-[var(--text)] truncate">
+                {msg.content.slice(0, 80)}{msg.content.length > 80 ? "…" : ""}
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 mb-5">
+          {(["md", "docx"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFormat(f)}
+              className={cn(
+                "px-3 py-1 rounded text-xs font-medium border transition-colors",
+                format === f
+                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                  : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]"
+              )}
+            >
+              .{f}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={selected.size === 0} onClick={handleExport}>
+            <Download size={12} className="mr-1.5" />
+            Export
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({
   message,
   streamingContent,
+  sessionId,
 }: {
   message?: Message;
   streamingContent?: string;
+  sessionId?: string;
 }) {
   const [citationsOpen, setCitationsOpen] = useState(false);
   const isUser = message?.role === "user";
@@ -39,7 +153,7 @@ function MessageBubble({
   const chunkIds = message?.retrieved_chunk_ids ?? [];
 
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("group flex flex-col", isUser ? "items-end" : "items-start")}>
       <div
         className={cn(
           "max-w-[75%] rounded-lg px-4 py-2.5 text-sm leading-relaxed",
@@ -60,11 +174,7 @@ function MessageBubble({
               onClick={() => setCitationsOpen((o) => !o)}
               className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
             >
-              {citationsOpen ? (
-                <ChevronUp size={11} />
-              ) : (
-                <ChevronDown size={11} />
-              )}
+              {citationsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
               {chunkIds.length} source{chunkIds.length !== 1 ? "s" : ""}
             </button>
             {citationsOpen && (
@@ -79,6 +189,29 @@ function MessageBubble({
           </div>
         )}
       </div>
+      {/* Per-message export actions (assistant messages only, after stream) */}
+      {!isUser && message && sessionId && (
+        <div className="flex items-center gap-1 mt-0.5 invisible group-hover:visible">
+          <button
+            onClick={() => navigator.clipboard.writeText(content)}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 rounded transition-colors"
+          >
+            Copy
+          </button>
+          <button
+            onClick={() => triggerExport(sessionId, "md", message.id)}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 rounded transition-colors"
+          >
+            .md
+          </button>
+          <button
+            onClick={() => triggerExport(sessionId, "docx", message.id)}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-0.5 rounded transition-colors"
+          >
+            .docx
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -91,6 +224,7 @@ function ChatView({ sessionId }: { sessionId: string }) {
   const { data, isLoading } = useChatSession(sessionId);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [streamingText, setStreamingText] = useState<string>("");
   const [optimisticUserMsg, setOptimisticUserMsg] = useState<string | null>(
     null,
@@ -168,7 +302,7 @@ function ChatView({ sessionId }: { sessionId: string }) {
           </div>
         )}
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble key={msg.id} message={msg} sessionId={sessionId} />
         ))}
         {optimisticUserMsg && (
           <MessageBubble
@@ -202,6 +336,17 @@ function ChatView({ sessionId }: { sessionId: string }) {
             className="flex-1 min-h-[60px] max-h-[160px] resize-none text-sm"
             disabled={streaming}
           />
+          {data && messages.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExportDialogOpen(true)}
+              className="shrink-0"
+              title="Export session"
+            >
+              <Download size={14} />
+            </Button>
+          )}
           <Button
             onClick={handleSend}
             disabled={!input.trim() || streaming}
@@ -216,6 +361,13 @@ function ChatView({ sessionId }: { sessionId: string }) {
           </Button>
         </div>
       </div>
+      {exportDialogOpen && data && (
+        <ExportDialog
+          session={data.session}
+          messages={messages}
+          onClose={() => setExportDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }
