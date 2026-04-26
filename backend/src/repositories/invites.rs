@@ -111,13 +111,11 @@ pub async fn use_invite(
     }
 
     // Mark the token used immediately; used_by is set by the caller after user insert.
-    sqlx::query(
-        "UPDATE invite_tokens SET used_at = now() WHERE token_hash = $1",
-    )
-    .bind(token_hash)
-    .execute(&mut **tx)
-    .await
-    .map_err(AppError::Database)?;
+    sqlx::query("UPDATE invite_tokens SET used_at = now() WHERE token_hash = $1")
+        .bind(token_hash)
+        .execute(&mut **tx)
+        .await
+        .map_err(AppError::Database)?;
 
     Ok(row)
 }
@@ -187,6 +185,7 @@ pub async fn create_password_reset(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn find_active_reset(
     pool: &PgPool,
     token_hash: &str,
@@ -223,13 +222,11 @@ pub async fn use_reset_token(
     .map_err(AppError::Database)?;
 
     if row.is_some() {
-        sqlx::query(
-            "UPDATE password_resets SET used_at = now() WHERE token_hash = $1",
-        )
-        .bind(token_hash)
-        .execute(&mut **tx)
-        .await
-        .map_err(AppError::Database)?;
+        sqlx::query("UPDATE password_resets SET used_at = now() WHERE token_hash = $1")
+            .bind(token_hash)
+            .execute(&mut **tx)
+            .await
+            .map_err(AppError::Database)?;
     }
 
     Ok(row)

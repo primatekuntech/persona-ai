@@ -32,6 +32,15 @@ pub enum AppError {
     #[error("rate limited")]
     RateLimited { retry_after_secs: u64 },
 
+    #[error("payload too large")]
+    PayloadTooLarge,
+
+    #[error("unsupported media type")]
+    UnsupportedMediaType,
+
+    #[error("quota exceeded")]
+    QuotaExceeded,
+
     #[error("gone")]
     Gone { code: &'static str },
 
@@ -44,7 +53,7 @@ pub enum AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let request_id = Uuid::new_v4().to_string();
+        let request_id = Uuid::now_v7().to_string();
 
         let (status, code, message, fields) = match &self {
             AppError::NotFound => (
@@ -65,24 +74,16 @@ impl IntoResponse for AppError {
                 "Access denied.".to_owned(),
                 None,
             ),
-            AppError::Validation(msg) => (
-                StatusCode::BAD_REQUEST,
-                "validation",
-                msg.clone(),
-                None,
-            ),
+            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, "validation", msg.clone(), None),
             AppError::ValidationFields(f) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "validation_field",
                 "Field validation failed.".to_owned(),
                 Some(f.clone()),
             ),
-            AppError::Conflict { code } => (
-                StatusCode::CONFLICT,
-                *code,
-                "Conflict.".to_owned(),
-                None,
-            ),
+            AppError::Conflict { code } => {
+                (StatusCode::CONFLICT, *code, "Conflict.".to_owned(), None)
+            }
             AppError::RateLimited { retry_after_secs } => {
                 let mut resp = (
                     StatusCode::TOO_MANY_REQUESTS,
@@ -97,10 +98,31 @@ impl IntoResponse for AppError {
                     .into_response();
                 resp.headers_mut().insert(
                     axum::http::header::RETRY_AFTER,
-                    retry_after_secs.to_string().parse().expect("valid header value"),
+                    retry_after_secs
+                        .to_string()
+                        .parse()
+                        .expect("valid header value"),
                 );
                 return resp;
             }
+            AppError::PayloadTooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload_too_large",
+                "Payload too large.".to_owned(),
+                None,
+            ),
+            AppError::UnsupportedMediaType => (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_media_type",
+                "Unsupported media type.".to_owned(),
+                None,
+            ),
+            AppError::QuotaExceeded => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "quota_exceeded",
+                "Quota exceeded.".to_owned(),
+                None,
+            ),
             AppError::Gone { code } => (
                 StatusCode::GONE,
                 *code,

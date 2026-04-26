@@ -9,12 +9,32 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- UUIDv7: time-sortable IDs (millisecond precision, random suffix).
+-- No external extension required; uses only built-in Postgres functions.
+CREATE OR REPLACE FUNCTION uuid_generate_v7()
+RETURNS uuid
+LANGUAGE plpgsql
+VOLATILE PARALLEL SAFE
+AS $$
+DECLARE
+  unix_ts_ms BYTEA;
+  uuid_bytes BYTEA;
+BEGIN
+  unix_ts_ms = substring(int8send(floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint) FROM 3);
+  uuid_bytes = uuid_send(gen_random_uuid());
+  uuid_bytes = overlay(uuid_bytes PLACING unix_ts_ms FROM 1 FOR 6);
+  uuid_bytes = set_byte(uuid_bytes, 6, (b'0111' || get_byte(uuid_bytes, 6)::bit(4))::bit(8)::int);
+  uuid_bytes = set_byte(uuid_bytes, 8, (b'10' || get_byte(uuid_bytes, 8)::bit(6))::bit(8)::int);
+  RETURN encode(uuid_bytes, 'hex')::uuid;
+END;
+$$;
+
 -- =============================================================================
 -- Identity & auth
 -- =============================================================================
 
 CREATE TABLE users (
-    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id                     UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     email                  CITEXT UNIQUE NOT NULL,
     password_hash          TEXT NOT NULL,
     role                   TEXT NOT NULL CHECK (role IN ('admin', 'user')) DEFAULT 'user',
@@ -69,11 +89,13 @@ CREATE TABLE invite_tokens (
     used_by     UUID REFERENCES users(id),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- At most one active (unused, unexpired) invite per email.
--- Enforces invite_pending 409 before a second invite can be created.
+-- At most one pending (unused) invite per email.
+-- expires_at is NOT included in the predicate: now() is VOLATILE and
+-- Postgres requires IMMUTABLE functions in index predicates. Expiry
+-- is enforced at the application layer in repositories/invites.rs.
 CREATE UNIQUE INDEX invite_tokens_active_email_uniq
     ON invite_tokens (email)
-    WHERE used_at IS NULL AND expires_at > now();
+    WHERE used_at IS NULL;
 
 -- Password reset tokens: same shape as invite tokens, TTL 30 min.
 CREATE TABLE password_resets (
@@ -101,7 +123,7 @@ CREATE INDEX audit_log_user_id_idx ON audit_log (user_id, created_at DESC);
 -- =============================================================================
 
 CREATE TABLE personas (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name        TEXT NOT NULL,
     relation    TEXT,
@@ -115,7 +137,7 @@ CREATE TABLE personas (
 CREATE INDEX personas_user_id_idx ON personas (user_id);
 
 CREATE TABLE eras (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     persona_id  UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     label       TEXT NOT NULL,
@@ -128,7 +150,7 @@ CREATE TABLE eras (
 CREATE INDEX eras_persona_id_idx ON eras (persona_id);
 
 CREATE TABLE documents (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     persona_id      UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     era_id          UUID REFERENCES eras(id) ON DELETE SET NULL,
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -156,7 +178,7 @@ CREATE INDEX documents_user_id_idx ON documents (user_id);
 CREATE UNIQUE INDEX documents_persona_content_uniq ON documents (persona_id, content_hash);
 
 CREATE TABLE chunks (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     persona_id  UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     era_id      UUID REFERENCES eras(id) ON DELETE SET NULL,
@@ -180,7 +202,7 @@ CREATE INDEX chunks_doc_idx ON chunks (document_id, chunk_index);
 -- =============================================================================
 
 CREATE TABLE style_profiles (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id            UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     persona_id    UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     era_id        UUID REFERENCES eras(id) ON DELETE CASCADE,
     user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -202,7 +224,7 @@ CREATE UNIQUE INDEX style_profiles_persona_era_uniq
 -- =============================================================================
 
 CREATE TABLE chat_sessions (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     persona_id  UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     era_id      UUID REFERENCES eras(id) ON DELETE SET NULL,
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -217,7 +239,7 @@ CREATE INDEX chat_sessions_persona_idx ON chat_sessions (persona_id, created_at 
 CREATE INDEX chat_sessions_user_id_idx ON chat_sessions (user_id);
 
 CREATE TABLE messages (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     session_id          UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
     user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role                TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
@@ -234,7 +256,7 @@ CREATE INDEX messages_session_idx ON messages (session_id, created_at);
 -- =============================================================================
 
 CREATE TABLE jobs (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     kind         TEXT NOT NULL,
     user_id      UUID REFERENCES users(id) ON DELETE CASCADE,
     persona_id   UUID REFERENCES personas(id) ON DELETE CASCADE,
@@ -273,7 +295,7 @@ CREATE INDEX idempotency_keys_created_at_idx ON idempotency_keys (created_at);
 -- =============================================================================
 
 CREATE TABLE errors (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id         UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
     route      TEXT,
     code       TEXT NOT NULL,

@@ -30,7 +30,7 @@ pub async fn record_session(
     user_agent: Option<&str>,
     expires_at: OffsetDateTime,
 ) -> Result<(), sqlx::Error> {
-    let session_id = session.id().to_string();
+    let session_id = session.id().map(|id| id.to_string()).unwrap_or_default();
     let hash = hash_session_id(&session_id);
     let ip_pg = ip.map(|a| a.to_string());
 
@@ -56,7 +56,7 @@ pub async fn record_session(
 
 /// Remove a single session from `session_index` on logout.
 pub async fn remove_session(pool: &PgPool, session: &Session) -> Result<(), sqlx::Error> {
-    let hash = hash_session_id(&session.id().to_string());
+    let hash = hash_session_id(&session.id().map(|id| id.to_string()).unwrap_or_default());
     sqlx::query("DELETE FROM session_index WHERE session_id_hash = $1")
         .bind(&hash)
         .execute(pool)
@@ -70,12 +70,11 @@ pub async fn remove_session(pool: &PgPool, session: &Session) -> Result<(), sqlx
 /// `tower_sessions` in O(user-sessions) rather than scanning the entire sessions table.
 pub async fn revoke_all_sessions(pool: &PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
     // Fetch only this user's raw session IDs — no full-table scan needed.
-    let session_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT session_id FROM session_index WHERE user_id = $1",
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await?;
+    let session_ids: Vec<String> =
+        sqlx::query_scalar("SELECT session_id FROM session_index WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
 
     if !session_ids.is_empty() {
         sqlx::query("DELETE FROM tower_sessions WHERE id = ANY($1)")

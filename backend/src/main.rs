@@ -19,10 +19,7 @@ use services::model_check::run_integrity_checks;
 use state::{AppState, ReadinessState};
 use std::sync::{Arc, RwLock};
 use time::Duration;
-use tower_http::{
-    set_header::SetResponseHeaderLayer,
-    trace::TraceLayer,
-};
+use tower_http::{set_header::SetResponseHeaderLayer, trace::TraceLayer};
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing_subscriber::EnvFilter;
@@ -80,9 +77,17 @@ async fn main() -> anyhow::Result<()> {
                 let pw_hash = hash_password(pw)?;
                 let user = create_user(&pool, email, &pw_hash, "admin", None).await?;
                 tracing::info!(email = %email, user_id = %user.id, "bootstrap admin created: email={}", email);
-                audit::log(&pool, Some(user.id), "admin.bootstrapped", None, None, None, None)
-                    .await
-                    .ok();
+                audit::log(
+                    &pool,
+                    Some(user.id),
+                    "admin.bootstrapped",
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .ok();
             } else {
                 tracing::warn!(
                     "ADMIN_BOOTSTRAP_EMAIL set but ADMIN_BOOTSTRAP_PASSWORD missing; skipping"
@@ -156,7 +161,9 @@ async fn main() -> anyhow::Result<()> {
     // reverse proxy (Caddy/nginx) that strips or overwrites these headers before
     // forwarding — otherwise an attacker can spoof their IP.
     if !is_production {
-        tracing::debug!("dev mode: X-Forwarded-For is trusted; ensure a reverse proxy in production");
+        tracing::debug!(
+            "dev mode: X-Forwarded-For is trusted; ensure a reverse proxy in production"
+        );
     }
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "listening");

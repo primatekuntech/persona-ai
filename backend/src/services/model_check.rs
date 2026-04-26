@@ -20,7 +20,9 @@ struct ModelEntry {
 }
 
 fn parse_models_toml() -> Vec<ModelEntry> {
-    let parsed: Value = MODELS_TOML.parse().unwrap_or(Value::Table(Default::default()));
+    let parsed: Value = MODELS_TOML
+        .parse()
+        .unwrap_or(Value::Table(Default::default()));
     let mut entries = Vec::new();
 
     if let Some(table) = parsed.as_table() {
@@ -151,10 +153,7 @@ fn verify_file(model_dir: &Path, entry: &ModelEntry) -> ModelStatus {
 pub async fn run_integrity_checks(model_dir: std::path::PathBuf) -> Vec<ModelStatus> {
     task::spawn_blocking(move || {
         let entries = parse_models_toml();
-        entries
-            .iter()
-            .map(|e| verify_file(&model_dir, e))
-            .collect()
+        entries.iter().map(|e| verify_file(&model_dir, e)).collect()
     })
     .await
     .unwrap_or_else(|e| {

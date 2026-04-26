@@ -4,13 +4,13 @@ use crate::{
     auth::{
         middleware::UserCtx,
         password::{dummy_verify, hash, validate_new_password, verify},
-        session::{record_session, remove_session, revoke_all_sessions, SESSION_USER_ID_KEY},
+        session::{record_session, remove_session, SESSION_USER_ID_KEY},
     },
     error::AppError,
     repositories::{
         invites::{
-            create_password_reset, find_active_invite, generate_token,
-            hash_token, use_invite, use_reset_token,
+            create_password_reset, find_active_invite, generate_token, hash_token, use_invite,
+            use_reset_token,
         },
         users::{find_by_email, touch_login},
     },
@@ -111,9 +111,10 @@ pub async fn login(
     record_attempt(&state.db, &email, ip, true).await?;
 
     // Session fixation prevention: cycle the session ID
-    session.cycle_id().await.map_err(|e| {
-        AppError::Internal(anyhow::anyhow!("session cycle failed: {e}"))
-    })?;
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("session cycle failed: {e}")))?;
     session
         .insert(SESSION_USER_ID_KEY, user.id)
         .await
@@ -128,16 +129,7 @@ pub async fn login(
     record_session(&state.db, &session, user.id, ip, user_agent, expires_at).await?;
     touch_login(&state.db, user.id).await?;
 
-    crate::audit::log(
-        &state.db,
-        Some(user.id),
-        "user.login",
-        None,
-        None,
-        ip,
-        None,
-    )
-    .await?;
+    crate::audit::log(&state.db, Some(user.id), "user.login", None, None, ip, None).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -150,9 +142,10 @@ pub async fn logout(
 ) -> Result<impl IntoResponse, AppError> {
     let ip = extract_ip(&headers);
     remove_session(&state.db, &session).await?;
-    session.delete().await.map_err(|e| {
-        AppError::Internal(anyhow::anyhow!("session delete failed: {e}"))
-    })?;
+    session
+        .delete()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("session delete failed: {e}")))?;
 
     crate::audit::log(
         &state.db,
@@ -294,7 +287,9 @@ pub async fn reset_password(
 
     let reset = use_reset_token(&mut tx, &token_hash)
         .await?
-        .ok_or(AppError::Gone { code: "invalid_token" })?;
+        .ok_or(AppError::Gone {
+            code: "invalid_token",
+        })?;
 
     sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(&new_hash)
@@ -309,9 +304,10 @@ pub async fn reset_password(
     crate::auth::session::revoke_all_sessions(pool, reset.user_id).await?;
 
     // Issue a fresh session
-    session.cycle_id().await.map_err(|e| {
-        AppError::Internal(anyhow::anyhow!("session cycle: {e}"))
-    })?;
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("session cycle: {e}")))?;
     session
         .insert(SESSION_USER_ID_KEY, reset.user_id)
         .await
@@ -399,7 +395,9 @@ pub async fn accept_invite(
     // atomically.  A concurrent accept will block here and then find used_at IS NOT NULL.
     let (email, role) = use_invite(&mut tx, &token_hash)
         .await?
-        .ok_or(AppError::Gone { code: "invalid_token" })?;
+        .ok_or(AppError::Gone {
+            code: "invalid_token",
+        })?;
 
     let pw_hash = hash(&body.password)?;
 
@@ -427,9 +425,10 @@ pub async fn accept_invite(
     tx.commit().await.map_err(AppError::Database)?;
 
     // Start session
-    session.cycle_id().await.map_err(|e| {
-        AppError::Internal(anyhow::anyhow!("session cycle: {e}"))
-    })?;
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("session cycle: {e}")))?;
     session
         .insert(SESSION_USER_ID_KEY, user.id)
         .await
@@ -500,15 +499,13 @@ async fn record_attempt(
     success: bool,
 ) -> Result<(), AppError> {
     let ip_str = ip.map(|a| a.to_string());
-    sqlx::query(
-        "INSERT INTO login_attempts (email, ip, success) VALUES ($1, $2::inet, $3)",
-    )
-    .bind(email)
-    .bind(ip_str.as_deref())
-    .bind(success)
-    .execute(pool)
-    .await
-    .map_err(AppError::Database)?;
+    sqlx::query("INSERT INTO login_attempts (email, ip, success) VALUES ($1, $2::inet, $3)")
+        .bind(email)
+        .bind(ip_str.as_deref())
+        .bind(success)
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
     Ok(())
 }
 

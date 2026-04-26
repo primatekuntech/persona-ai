@@ -36,14 +36,13 @@ async fn persona_scoped_to_owner(pool: PgPool) {
     .unwrap();
 
     // Query from user_b's perspective — should return nothing
-    let visible: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM personas WHERE id = $1 AND user_id = $2",
-    )
-    .bind(persona_id)
-    .bind(user_b)
-    .fetch_optional(&pool)
-    .await
-    .unwrap();
+    let visible: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM personas WHERE id = $1 AND user_id = $2")
+            .bind(persona_id)
+            .bind(user_b)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
 
     assert!(
         visible.is_none(),
@@ -70,8 +69,8 @@ async fn document_scoped_to_owner(pool: PgPool) {
     .unwrap();
 
     let doc_id: Uuid = sqlx::query_scalar(
-        r#"INSERT INTO documents (user_id, persona_id, title, source_type, status)
-           VALUES ($1, $2, 'Secret Doc', 'text', 'ready')
+        r#"INSERT INTO documents (user_id, persona_id, title, kind, mime_type, original_path, content_hash, size_bytes, status)
+           VALUES ($1, $2, 'Secret Doc', 'text', 'text/plain', '/data/doc.txt', 'deadbeef', 0, 'pending')
            RETURNING id"#,
     )
     .bind(user_a)
@@ -80,14 +79,13 @@ async fn document_scoped_to_owner(pool: PgPool) {
     .await
     .unwrap();
 
-    let visible: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM documents WHERE id = $1 AND user_id = $2",
-    )
-    .bind(doc_id)
-    .bind(user_b)
-    .fetch_optional(&pool)
-    .await
-    .unwrap();
+    let visible: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM documents WHERE id = $1 AND user_id = $2")
+            .bind(doc_id)
+            .bind(user_b)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
 
     assert!(visible.is_none(), "user_b must not see user_a's document");
 }
@@ -110,8 +108,8 @@ async fn chat_session_scoped_to_owner(pool: PgPool) {
     .unwrap();
 
     let chat_id: Uuid = sqlx::query_scalar(
-        r#"INSERT INTO chat_sessions (user_id, persona_id, title)
-           VALUES ($1, $2, 'Private chat')
+        r#"INSERT INTO chat_sessions (user_id, persona_id, title, model_id)
+           VALUES ($1, $2, 'Private chat', 'test-model')
            RETURNING id"#,
     )
     .bind(user_a)
@@ -120,16 +118,18 @@ async fn chat_session_scoped_to_owner(pool: PgPool) {
     .await
     .unwrap();
 
-    let visible: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM chat_sessions WHERE id = $1 AND user_id = $2",
-    )
-    .bind(chat_id)
-    .bind(user_b)
-    .fetch_optional(&pool)
-    .await
-    .unwrap();
+    let visible: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM chat_sessions WHERE id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(user_b)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
 
-    assert!(visible.is_none(), "user_b must not see user_a's chat session");
+    assert!(
+        visible.is_none(),
+        "user_b must not see user_a's chat session"
+    );
 }
 
 // ─── Find-by-id returns own row ──────────────────────────────────────────────
@@ -139,26 +139,25 @@ async fn find_user_by_id_returns_correct_row(pool: PgPool) {
     let user_a = seed_user(&pool, "findme_a@example.com").await;
     let user_b = seed_user(&pool, "findme_b@example.com").await;
 
-    let found: Option<(String,)> = sqlx::query_as(
-        "SELECT email FROM users WHERE id = $1",
-    )
-    .bind(user_a)
-    .fetch_optional(&pool)
-    .await
-    .unwrap();
+    let found: Option<(String,)> = sqlx::query_as("SELECT email FROM users WHERE id = $1")
+        .bind(user_a)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(found.map(|r| r.0).as_deref(), Some("findme_a@example.com"));
 
     // user_b lookup returns user_b's row, not user_a's
-    let found_b: Option<(String,)> = sqlx::query_as(
-        "SELECT email FROM users WHERE id = $1",
-    )
-    .bind(user_b)
-    .fetch_optional(&pool)
-    .await
-    .unwrap();
+    let found_b: Option<(String,)> = sqlx::query_as("SELECT email FROM users WHERE id = $1")
+        .bind(user_b)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
 
-    assert_eq!(found_b.map(|r| r.0).as_deref(), Some("findme_b@example.com"));
+    assert_eq!(
+        found_b.map(|r| r.0).as_deref(),
+        Some("findme_b@example.com")
+    );
 }
 
 // ─── Password reset tokens scoped to user ────────────────────────────────────
@@ -208,5 +207,8 @@ async fn password_reset_scoped_to_user(pool: PgPool) {
     .await
     .unwrap();
 
-    assert!(found_own.is_some(), "user_a should find their own reset token");
+    assert!(
+        found_own.is_some(),
+        "user_a should find their own reset token"
+    );
 }

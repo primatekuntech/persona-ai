@@ -49,7 +49,7 @@ All endpoints check `persona.user_id = ctx.user_id` before any operation. **404*
 - `era.label`: 1–40 chars, unique per persona.
 - `era.start_date ≤ era.end_date` if both given.
 
-Use `validator` crate or hand-rolled. Return `400 { error: "validation", fields: { name: "..." } }`.
+Use `validator` crate or hand-rolled. Return `422 { error: { code: "validation_field", fields: { name: "..." } } }` for field-level semantic errors (per `docs/06-api-conventions.md` which uses 422 for semantic validation, not 400).
 
 ### 2.4 Avatars
 
@@ -122,7 +122,7 @@ Edit name, description, relation, birth year, avatar. Danger zone: delete person
 4. Deleting a persona with an avatar removes `/data/avatars/<id>.webp` within 5 s of the API response (async cleanup).
 5. Avatar upload rejects a 5 MB jpeg with 413 (payload_too_large); accepts a 200 KB png, persists across reload, and the stored file is webp (content-sniffed, not filename-trusted).
 6. Uploading a file with an `image/png` Content-Type header but GIF magic bytes is rejected with 415 (mime via `infer`).
-7. Creating an era with `end_date < start_date` returns 400 with `fields.end_date` set.
+7. Creating an era with `end_date < start_date` returns 422 with `fields.end_date` set (semantic validation per `docs/06-api-conventions.md`).
 8. Cmd+P opens the persona switcher and filters by typed text.
 9. POST `/api/personas` twice with the same `Idempotency-Key` creates one row and returns the same persona both times.
 10. Two concurrent DELETE requests on the same persona: first returns 204, second returns 404 (no orphaned disk state).

@@ -50,7 +50,9 @@ pub fn hash(password: &str) -> Result<String, AppError> {
 pub fn verify(password: &str, hash: &str) -> Result<bool, AppError> {
     let parsed = PasswordHash::new(hash)
         .map_err(|e| AppError::Internal(anyhow::anyhow!("password hash parse failed: {e}")))?;
-    Ok(argon2().verify_password(password.as_bytes(), &parsed).is_ok())
+    Ok(argon2()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok())
 }
 
 /// Runs a dummy hash to consume constant time regardless of whether a user exists.

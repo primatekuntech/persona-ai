@@ -1,6 +1,6 @@
 /// Admin route handlers: invites and users management.
 use crate::{
-    auth::middleware::{AdminCtx, UserCtx},
+    auth::middleware::AdminCtx,
     error::AppError,
     repositories::{invites as invite_repo, users as user_repo},
     services::invites as invite_svc,
@@ -54,8 +54,7 @@ pub async fn create_invite(
     )
     .await?;
 
-    let expires_at = OffsetDateTime::now_utc()
-        + time::Duration::days(invite_svc::INVITE_TTL_DAYS);
+    let expires_at = OffsetDateTime::now_utc() + time::Duration::days(invite_svc::INVITE_TTL_DAYS);
 
     crate::audit::log(
         &state.db,
@@ -103,9 +102,9 @@ pub async fn list_invites(
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more {
-        items.last().map(|i| {
-            base64_cursor(i.created_at, &i.token_hash)
-        })
+        items
+            .last()
+            .map(|i| base64_cursor(i.created_at, &i.token_hash))
     } else {
         None
     };
@@ -151,7 +150,10 @@ pub async fn list_users(
 
     // Decode cursor
     let (cursor_ts, cursor_id) = if let Some(ref id) = q.cursor_id {
-        (q.cursor_ts, Some(Uuid::parse_str(id).map_err(|_| AppError::Validation("invalid cursor".into()))?))
+        (
+            q.cursor_ts,
+            Some(Uuid::parse_str(id).map_err(|_| AppError::Validation("invalid cursor".into()))?),
+        )
     } else {
         (None, None)
     };
@@ -160,9 +162,9 @@ pub async fn list_users(
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more {
-        items.last().map(|u| {
-            base64_cursor(u.created_at, &u.id.to_string())
-        })
+        items
+            .last()
+            .map(|u| base64_cursor(u.created_at, &u.id.to_string()))
     } else {
         None
     };

@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useMe } from "@/lib/auth";
 import Layout from "@/components/Layout";
+import PersonaWorkspaceLayout from "@/components/PersonaWorkspaceLayout";
 import Login from "@/pages/Login";
 import AcceptInvite from "@/pages/AcceptInvite";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -9,6 +10,9 @@ import Personas from "@/pages/Personas";
 import Settings from "@/pages/Settings";
 import AdminUsers from "@/pages/admin/Users";
 import AdminInvites from "@/pages/admin/Invites";
+import PersonaDashboard from "@/pages/personas/Dashboard";
+import ErasPage from "@/pages/personas/Eras";
+import PersonaSettings from "@/pages/personas/PersonaSettings";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { data, isLoading, isError } = useMe();
@@ -35,7 +39,25 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Authenticated */}
+        {/* Persona workspace (has its own layout) */}
+        <Route
+          path="/personas/:id"
+          element={
+            <RequireAuth>
+              <PersonaWorkspaceLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<PersonaDashboard />} />
+          <Route path="eras" element={<ErasPage />} />
+          <Route path="settings" element={<PersonaSettings />} />
+          {/* Stubs for future sprints */}
+          <Route path="documents" element={<div className="p-8 text-[var(--text-muted)] text-sm">Documents — coming in Sprint 3.</div>} />
+          <Route path="chat" element={<div className="p-8 text-[var(--text-muted)] text-sm">Chat — coming in Sprint 5.</div>} />
+        </Route>
+
+        {/* Authenticated with main layout */}
         <Route
           element={
             <RequireAuth>

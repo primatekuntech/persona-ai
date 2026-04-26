@@ -97,11 +97,8 @@ pub async fn touch_login(pool: &PgPool, user_id: Uuid) -> Result<(), AppError> {
 }
 
 /// Update password hash. Called after password reset.
-pub async fn set_password(
-    pool: &PgPool,
-    user_id: Uuid,
-    new_hash: &str,
-) -> Result<(), AppError> {
+#[allow(dead_code)]
+pub async fn set_password(pool: &PgPool, user_id: Uuid, new_hash: &str) -> Result<(), AppError> {
     sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(new_hash)
         .bind(user_id)

@@ -83,12 +83,16 @@ async fn invite_conflicts_when_user_already_exists(pool: PgPool) {
     assert!(user_exists);
 
     // Confirm invite was NOT created for this email.
-    let invite_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM invite_tokens WHERE email = 'existing@example.com'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(invite_count, 0, "no invite should be created for existing user");
+    let invite_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM invite_tokens WHERE email = 'existing@example.com'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        invite_count, 0,
+        "no invite should be created for existing user"
+    );
 
     drop(admin_id); // used for compilation
 }
@@ -211,14 +215,12 @@ async fn double_accept_second_is_rejected(pool: PgPool) {
     .unwrap();
     assert!(row.is_some(), "first accept should see the token");
 
-    sqlx::query(
-        "UPDATE invite_tokens SET used_at = now(), used_by = $1 WHERE token_hash = $2",
-    )
-    .bind(admin_id) // dummy user_id for test
-    .bind(&token_hash)
-    .execute(&mut *tx1)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE invite_tokens SET used_at = now(), used_by = $1 WHERE token_hash = $2")
+        .bind(admin_id) // dummy user_id for test
+        .bind(&token_hash)
+        .execute(&mut *tx1)
+        .await
+        .unwrap();
     tx1.commit().await.unwrap();
 
     // Second accept: should find no active row
@@ -267,5 +269,8 @@ async fn expired_invite_is_not_found(pool: PgPool) {
     .await
     .unwrap();
 
-    assert!(found.is_none(), "expired invite must not be found by active query");
+    assert!(
+        found.is_none(),
+        "expired invite must not be found by active query"
+    );
 }

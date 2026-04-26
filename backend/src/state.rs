@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 /// Model integrity status populated at startup.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ModelStatus {
     pub name: String,
     pub path: String,

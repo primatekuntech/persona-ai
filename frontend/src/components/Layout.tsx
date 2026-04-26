@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useLogout, useMe } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Users, Mail, MessageSquare, Settings, LogOut } from "lucide-react";

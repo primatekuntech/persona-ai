@@ -96,7 +96,10 @@ async fn successful_login_clears_failures(pool: PgPool) {
     .await
     .unwrap();
 
-    assert_eq!(count, 0, "failures should be cleared after successful login");
+    assert_eq!(
+        count, 0,
+        "failures should be cleared after successful login"
+    );
 }
 
 // ─── Old failures don't trigger lockout ──────────────────────────────────────

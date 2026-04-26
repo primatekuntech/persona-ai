@@ -43,13 +43,11 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    #[allow(clippy::result_large_err)] // figment::Error is a library type we can't box
     pub fn load() -> Result<Self, figment::Error> {
         Figment::from(Serialized::defaults(AppConfig::default()))
             .merge(Toml::file("app.toml"))
-            .merge(
-                Env::raw()
-                    .map(|k| k.as_str().to_lowercase().into()),
-            )
+            .merge(Env::raw().map(|k| k.as_str().to_lowercase().into()))
             .extract()
     }
 }
