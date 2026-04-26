@@ -137,10 +137,8 @@ async fn run_cleanup(state: &AppState) {
             for f in rd.flatten() {
                 if let Ok(meta) = f.metadata() {
                     if let Ok(modified) = meta.modified() {
-                        if modified < tmp_cutoff {
-                            if std::fs::remove_file(f.path()).is_ok() {
-                                pruned += 1;
-                            }
+                        if modified < tmp_cutoff && std::fs::remove_file(f.path()).is_ok() {
+                            pruned += 1;
                         }
                     }
                 }
