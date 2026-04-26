@@ -15,6 +15,7 @@ import ErasPage from "@/pages/personas/Eras";
 import PersonaSettings from "@/pages/personas/PersonaSettings";
 import DocumentsPage from "@/pages/personas/Documents";
 import UploadPage from "@/pages/personas/Upload";
+import ChatPage from "@/pages/personas/Chat";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { data, isLoading, isError } = useMe();
@@ -56,8 +57,8 @@ export default function App() {
           <Route path="settings" element={<PersonaSettings />} />
           <Route path="documents" element={<DocumentsPage />} />
           <Route path="upload" element={<UploadPage />} />
-          {/* Stubs for future sprints */}
-          <Route path="chat" element={<div className="p-8 text-[var(--text-muted)] text-sm">Chat — coming in Sprint 5.</div>} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="chat/:sessionId" element={<ChatPage />} />
         </Route>
 
         {/* Authenticated with main layout */}

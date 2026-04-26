@@ -106,11 +106,19 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 unicode-normalization = "0.1"
 # Parallel iterators for CPU-bound analysis pipeline
 rayon = "1"
+# Per-user concurrency tracking for chat generation
+dashmap = "6"
+# Local LLM via llama.cpp (requires C++ toolchain + GGUF file; optional)
+llama-cpp-2 = { version = "0.1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 axum-test = "20"
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "json", "macros"] }
+
+[features]
+whisper = ["dep:whisper-rs"]
+llm = ["dep:llama-cpp-2"]
 
 [profile.release]
 opt-level = 3

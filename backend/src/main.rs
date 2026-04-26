@@ -135,12 +135,36 @@ async fn main() -> anyhow::Result<()> {
     // ── App state ────────────────────────────────────────────────────────────
     let email_client = ResendClient::new(&config.resend_api_key, &config.resend_from);
     let ingest_tx = services::broadcast::new_channel();
+
+    let generation_semaphore = Arc::new(tokio::sync::Semaphore::new(
+        config.max_concurrent_generation,
+    ));
+    let user_generation_counts: Arc<
+        dashmap::DashMap<uuid::Uuid, Arc<std::sync::atomic::AtomicU8>>,
+    > = Arc::new(dashmap::DashMap::new());
+
+    // Try to load LLM (feature-gated and optional)
+    let llm_path = config.model_dir.join("llm/qwen2.5-7b-instruct-q4_k_m.gguf");
+    let llm = match services::llm::Llm::new(&llm_path) {
+        Ok(m) => {
+            tracing::info!("LLM loaded from {}", llm_path.display());
+            Some(Arc::new(m))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "LLM not loaded — chat will return synthetic responses");
+            None
+        }
+    };
+
     let state = AppState {
         db: pool,
         config: Arc::new(config.clone()),
         email: Arc::new(email_client),
         readiness,
         ingest_tx,
+        generation_semaphore,
+        user_generation_counts,
+        llm,
     };
 
     // ── Background workers ───────────────────────────────────────────────────

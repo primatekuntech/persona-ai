@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth;
+pub mod chat;
 pub mod documents;
 pub mod health;
 pub mod personas;
@@ -11,6 +12,7 @@ use axum::{
     routing::{delete, get, patch, post},
     Router,
 };
+use chat as chat_handlers;
 use profile as profile_handlers;
 use std::sync::Arc;
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
@@ -119,6 +121,22 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/personas/:id/eras/:era_id/profile",
             get(profile_handlers::get_era_profile),
+        )
+        // Chat sessions
+        .route(
+            "/api/personas/:id/chats",
+            post(chat_handlers::create_session),
+        )
+        .route("/api/personas/:id/chats", get(chat_handlers::list_sessions))
+        .route("/api/chats/:session_id", get(chat_handlers::get_session))
+        .route(
+            "/api/chats/:session_id",
+            delete(chat_handlers::delete_session),
+        )
+        // Post message (SSE) — 32 KB body limit
+        .route(
+            "/api/chats/:session_id/messages",
+            post(chat_handlers::post_message).layer(DefaultBodyLimit::max(32 * 1024)),
         );
 
     // Document upload — rate-limited (60/60min) + 512 MB body limit for audio
