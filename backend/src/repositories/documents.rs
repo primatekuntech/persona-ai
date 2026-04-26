@@ -250,6 +250,44 @@ pub async fn delete(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<Option<i64
     Ok(result.map(|(sz,)| sz))
 }
 
+/// Delete a document and atomically decrement the user's quota in one transaction.
+/// Returns the size_bytes of the deleted document, or None if not found.
+pub async fn delete_with_quota(
+    pool: &PgPool,
+    id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<i64>, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::Database)?;
+
+    let result: Option<(i64,)> =
+        sqlx::query_as("DELETE FROM documents WHERE id = $1 AND user_id = $2 RETURNING size_bytes")
+            .bind(id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+
+    if let Some((size,)) = result {
+        sqlx::query(
+            "UPDATE users SET \
+             current_storage_bytes = GREATEST(0, current_storage_bytes - $1), \
+             current_doc_count = GREATEST(0, current_doc_count - 1) \
+             WHERE id = $2",
+        )
+        .bind(size)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Database)?;
+
+        tx.commit().await.map_err(AppError::Database)?;
+        Ok(Some(size))
+    } else {
+        tx.rollback().await.ok();
+        Ok(None)
+    }
+}
+
 /// Atomic quota check + increment. Returns true if quota was available and incremented.
 /// The UPDATE touches users.current_storage_bytes and current_doc_count in one statement.
 pub async fn atomic_quota_check_and_increment(

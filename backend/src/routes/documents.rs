@@ -86,12 +86,14 @@ pub async fn upload_document(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Response, AppError> {
-    // Require Idempotency-Key per spec §3.1
+    // Require Idempotency-Key per spec §3.1; validate as UUID.
     let idem_key = headers
         .get("idempotency-key")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Validation("Missing Idempotency-Key header.".into()))?
         .to_string();
+    Uuid::parse_str(&idem_key)
+        .map_err(|_| AppError::Validation("Idempotency-Key must be a valid UUID.".into()))?;
 
     // Verify persona ownership (404 if not found)
     let _ = persona_repo::find_by_id(&state.db, persona_id, ctx.user_id)
@@ -131,6 +133,9 @@ pub async fn upload_document(
 
                 // Stream file to disk while accumulating hash and byte count
                 let mut field_stream = field;
+                // Pessimistic per-kind size limit: tightened to TEXT_MAX_BYTES once MIME is sniffed.
+                let mut stream_limit = AUDIO_MAX_BYTES;
+                let mut sniff_done = false;
                 loop {
                     let chunk = match field_stream.chunk().await {
                         Ok(Some(c)) => c,
@@ -150,8 +155,18 @@ pub async fn upload_document(
                         file_bytes_head.extend_from_slice(&chunk[..need]);
                     }
 
-                    // Early size abort (check audio limit; text checked after MIME detection)
-                    if total_bytes > AUDIO_MAX_BYTES {
+                    // Once we have 512 bytes, sniff MIME and tighten limit for text files.
+                    if !sniff_done && file_bytes_head.len() >= 512 {
+                        sniff_done = true;
+                        let early_mime = infer::get(&file_bytes_head)
+                            .map(|t| t.mime_type())
+                            .unwrap_or("application/octet-stream");
+                        if TEXT_MIMES.contains(&early_mime) {
+                            stream_limit = TEXT_MAX_BYTES;
+                        }
+                    }
+
+                    if total_bytes > stream_limit {
                         let _ = tokio::fs::remove_file(&tmp_file_path).await;
                         return Err(AppError::PayloadTooLarge);
                     }
@@ -342,7 +357,8 @@ pub async fn upload_document(
     }
 
     // Store idempotency record
-    let doc_json = serde_json::to_value(&doc).unwrap_or(serde_json::Value::Null);
+    let doc_json = serde_json::to_value(&doc)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("serialize document: {e}")))?;
     idempotency::store(
         &state.db,
         &idem_key,
@@ -439,13 +455,10 @@ pub async fn delete_document(
         .as_ref()
         .map(|p| state.config.data_dir.join(p));
 
-    // Delete row (cascades to chunks/jobs via FK)
-    let size = doc_repo::delete(&state.db, doc_id, ctx.user_id)
+    // Delete row + decrement quota atomically in one transaction
+    doc_repo::delete_with_quota(&state.db, doc_id, ctx.user_id)
         .await?
         .ok_or(AppError::NotFound)?;
-
-    // Decrement quota
-    doc_repo::decrement_quota(&state.db, ctx.user_id, size).await?;
 
     // Async filesystem cleanup
     tokio::spawn(async move {
@@ -498,6 +511,22 @@ pub async fn reingest_document(
         return Ok((status, Json(hit.body)).into_response());
     }
 
+    // Guard: reject if an ingest job is currently running for this document
+    let running: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM jobs WHERE kind='ingest_document' AND status='running' \
+         AND payload->>'document_id' = $1",
+    )
+    .bind(doc_id.to_string())
+    .fetch_one(&state.db)
+    .await
+    .map_err(AppError::Database)?;
+
+    if running > 0 {
+        return Err(AppError::Conflict {
+            code: "ingest_running",
+        });
+    }
+
     // Delete existing chunks
     sqlx::query("DELETE FROM chunks WHERE document_id = $1")
         .bind(doc_id)
@@ -528,7 +557,8 @@ pub async fn reingest_document(
     .await
     .map_err(AppError::Database)?;
 
-    let doc_json = serde_json::to_value(&doc).unwrap_or(serde_json::Value::Null);
+    let doc_json = serde_json::to_value(&doc)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("serialize document: {e}")))?;
     idempotency::store(
         &state.db,
         &idem_key,

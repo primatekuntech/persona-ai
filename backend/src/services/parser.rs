@@ -171,3 +171,56 @@ fn parse_docx(path: &Path) -> Result<String, AppError> {
 
     Ok(text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_tmp(content: &[u8]) -> (tempfile::NamedTempFile, std::path::PathBuf) {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(content).unwrap();
+        let p = f.path().to_path_buf();
+        (f, p)
+    }
+
+    #[test]
+    fn plain_text_roundtrip() {
+        let content = b"Hello world\nSecond line";
+        let (_f, p) = write_tmp(content);
+        let text = parse_to_text(&p, "text/plain").unwrap();
+        assert!(text.contains("Hello world"));
+    }
+
+    #[test]
+    fn binary_file_rejected() {
+        // > 40 % non-printable bytes must be rejected
+        let mut content = vec![0x01u8; 100];
+        for i in 0..50 {
+            content[i] = b'a';
+        }
+        let (_f, p) = write_tmp(&content);
+        let result = parse_to_text(&p, "text/plain");
+        assert!(result.is_err(), "binary file must be rejected");
+    }
+
+    #[test]
+    fn unsupported_mime_errors() {
+        let (_f, p) = write_tmp(b"data");
+        let result = parse_to_text(&p, "image/png");
+        assert!(matches!(result, Err(AppError::IngestFailed { .. })));
+    }
+
+    #[test]
+    fn constants_are_within_spec() {
+        assert_eq!(MAX_EXTRACTED_BYTES, 10 * 1024 * 1024, "10 MB text limit");
+        assert_eq!(MAX_PDF_PAGES, 500, "500 page PDF limit");
+        assert_eq!(MAX_DOCX_PARAGRAPHS, 5000, "5000 paragraph docx limit");
+        assert_eq!(ZIP_BOMB_RATIO, 100, "100:1 zip bomb ratio");
+        assert_eq!(
+            ZIP_BOMB_SIZE_THRESHOLD,
+            50 * 1024 * 1024,
+            "50 MB uncompressed threshold"
+        );
+    }
+}

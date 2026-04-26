@@ -85,14 +85,16 @@ pub async fn run_ingest(
 
         let result = tokio::task::spawn_blocking(move || {
             let transcriber = crate::services::transcriber::Transcriber::new(
-                &model_dir.join("ggml-small.en.bin"),
-            )?;
+                &model_dir.join("whisper/ggml-small.en.bin"),
+            )
+            .map_err(crate::services::transcriber::TranscriberError::Other)?;
 
-            let audio_path = std::path::Path::new(&original_path);
+            // Join data_dir with the relative original_path stored in the DB.
+            let audio_path = data_dir.join(&original_path);
             let progress_pool = pool_clone.clone();
             let progress_tx = ingest_tx_clone.clone();
 
-            let (transcript_text, dur) = transcriber.transcribe(audio_path, move |pct| {
+            let (transcript_text, dur) = transcriber.transcribe(&audio_path, move |pct| {
                 // Update progress in DB and emit SSE (best-effort, ignore errors)
                 let rt = tokio::runtime::Handle::try_current();
                 if let Ok(handle) = rt {
@@ -120,20 +122,31 @@ pub async fn run_ingest(
                 }
             })?;
 
-            // Save transcript
+            // Save transcript; store relative path so handlers can join with data_dir.
             let transcript_dir = data_dir.join("transcripts");
             std::fs::create_dir_all(&transcript_dir)?;
-            let tpath = transcript_dir.join(format!("{document_id}.txt"));
-            std::fs::write(&tpath, &transcript_text)?;
+            let tpath_abs = transcript_dir.join(format!("{document_id}.txt"));
+            std::fs::write(&tpath_abs, &transcript_text)
+                .map_err(|e| crate::services::transcriber::TranscriberError::Other(e.into()))?;
+            let tpath_rel = format!("transcripts/{document_id}.txt");
 
-            Ok::<_, anyhow::Error>((transcript_text, tpath.to_string_lossy().to_string(), dur))
+            Ok::<_, crate::services::transcriber::TranscriberError>((
+                transcript_text,
+                tpath_rel,
+                dur,
+            ))
         })
         .await
         .map_err(|e| AppError::IngestFailed {
             reason: format!("spawn_blocking join error: {e}"),
         })?
-        .map_err(|e| AppError::IngestFailed {
-            reason: e.to_string(),
+        .map_err(|e| match e {
+            crate::services::transcriber::TranscriberError::AudioTooLong => AppError::AudioTooLong,
+            crate::services::transcriber::TranscriberError::Other(inner) => {
+                AppError::IngestFailed {
+                    reason: inner.to_string(),
+                }
+            }
         })?;
 
         (result.0, Some(result.1), Some(result.2))
@@ -152,9 +165,11 @@ pub async fn run_ingest(
 
         let original_path = doc.original_path.clone();
         let mime_type = doc.mime_type.clone();
+        let data_dir_text = config.data_dir.clone();
 
         let text = tokio::task::spawn_blocking(move || {
-            crate::services::parser::parse_to_text(std::path::Path::new(&original_path), &mime_type)
+            let full_path = data_dir_text.join(&original_path);
+            crate::services::parser::parse_to_text(&full_path, &mime_type)
         })
         .await
         .map_err(|e| AppError::IngestFailed {
@@ -235,16 +250,28 @@ pub async fn run_ingest(
     .await
     .map_err(AppError::Database)?;
 
-    // Embed in batches of 16
+    // Create embedder once; keep in Arc so spawn_blocking batches can borrow it.
+    let embedder = tokio::task::spawn_blocking(move || {
+        crate::services::embedder::Embedder::new(&embed_model_dir)
+    })
+    .await
+    .map_err(|e| AppError::IngestFailed {
+        reason: format!("embed init spawn error: {e}"),
+    })?
+    .map_err(|e| AppError::IngestFailed {
+        reason: format!("embed init error: {e}"),
+    })?;
+    let embedder = std::sync::Arc::new(embedder);
+
+    // Embed in batches of 16 (idempotent: only fetches embedding IS NULL chunks)
     for batch in chunk_rows.chunks(16) {
         let texts: Vec<String> = batch.iter().map(|(_, t)| t.clone()).collect();
         let ids: Vec<Uuid> = batch.iter().map(|(id, _)| *id).collect();
-        let model_dir_batch = embed_model_dir.clone();
+        let embedder_clone = embedder.clone();
 
         let embeddings = tokio::task::spawn_blocking(move || {
-            let embedder = crate::services::embedder::Embedder::new(&model_dir_batch)?;
             let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-            embedder.embed(&text_refs)
+            embedder_clone.embed(&text_refs)
         })
         .await
         .map_err(|e| AppError::IngestFailed {

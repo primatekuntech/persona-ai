@@ -9,14 +9,17 @@ mod routes;
 mod services;
 mod state;
 
-// Parser sandboxing: cap virtual memory at 512 MB for lopdf/docx-rs safety.
-// This is a process-wide limit shared across all ingest jobs.
+// Parser sandboxing: cap virtual address space.
+// 4 GB accommodates the HTTP server + fastembed (~300 MB) + whisper (~1 GB) + parsers.
+// The sprint spec targets 512 MB for a *dedicated* ingest process; we run in-process so
+// we need a higher ceiling. Revisit if a separate worker process is introduced.
 // On non-Linux platforms this block compiles away.
 #[cfg(target_os = "linux")]
 fn set_rlimit_as() {
+    let four_gb: u64 = 4 * 1024 * 1024 * 1024;
     let limit = libc::rlimit {
-        rlim_cur: 512 * 1024 * 1024,
-        rlim_max: 512 * 1024 * 1024,
+        rlim_cur: four_gb,
+        rlim_max: four_gb,
     };
     // SAFETY: setrlimit is always safe to call; the worst case is EINVAL which we ignore.
     let _ = unsafe { libc::setrlimit(libc::RLIMIT_AS, &limit) };

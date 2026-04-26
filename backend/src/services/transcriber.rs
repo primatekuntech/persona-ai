@@ -9,6 +9,18 @@ use std::path::Path;
 
 const MAX_DURATION_SEC: f64 = 6.0 * 3600.0; // 6 hours
 
+/// Typed error that lets callers distinguish audio-too-long (→ 413) from other failures (→ 422).
+pub enum TranscriberError {
+    AudioTooLong,
+    Other(anyhow::Error),
+}
+
+impl From<anyhow::Error> for TranscriberError {
+    fn from(e: anyhow::Error) -> Self {
+        TranscriberError::Other(e)
+    }
+}
+
 pub struct Transcriber {
     model_path: std::path::PathBuf,
 }
@@ -34,19 +46,15 @@ impl Transcriber {
         &self,
         audio_path: &Path,
         progress_cb: impl Fn(i16),
-    ) -> Result<(String, i32), anyhow::Error> {
+    ) -> Result<(String, i32), TranscriberError> {
         // Step 1: Probe duration with ffprobe
-        let duration_sec = probe_duration(audio_path)?;
+        let duration_sec = probe_duration(audio_path).map_err(|e| TranscriberError::Other(e))?;
         if duration_sec > MAX_DURATION_SEC {
-            return Err(anyhow::anyhow!(
-                "audio_too_long: duration {:.0}s exceeds {:.0}s limit",
-                duration_sec,
-                MAX_DURATION_SEC
-            ));
+            return Err(TranscriberError::AudioTooLong);
         }
 
         // Step 2: Convert to 16 kHz mono WAV via ffmpeg
-        let tmp_dir = tempfile::TempDir::new()?;
+        let tmp_dir = tempfile::TempDir::new().map_err(|e| TranscriberError::Other(e.into()))?;
         let wav_path = tmp_dir.path().join("audio.wav");
         let ffmpeg_status = std::process::Command::new("ffmpeg")
             .args([
@@ -65,10 +73,13 @@ impl Transcriber {
             ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .status()?;
+            .status()
+            .map_err(|e| TranscriberError::Other(e.into()))?;
 
         if !ffmpeg_status.success() {
-            return Err(anyhow::anyhow!("ffmpeg conversion failed"));
+            return Err(TranscriberError::Other(anyhow::anyhow!(
+                "ffmpeg conversion failed"
+            )));
         }
 
         progress_cb(10);
@@ -99,9 +110,9 @@ impl Transcriber {
 
         let _ = &self.model_path; // suppress unused warning
         let _ = wav_path;
-        Err(anyhow::anyhow!(
+        Err(TranscriberError::Other(anyhow::anyhow!(
             "Whisper not enabled — build with --features whisper and ensure model files exist at /data/models/"
-        ))
+        )))
     }
 }
 
