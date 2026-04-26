@@ -9,6 +9,22 @@ mod routes;
 mod services;
 mod state;
 
+// Parser sandboxing: cap virtual memory at 512 MB for lopdf/docx-rs safety.
+// This is a process-wide limit shared across all ingest jobs.
+// On non-Linux platforms this block compiles away.
+#[cfg(target_os = "linux")]
+fn set_rlimit_as() {
+    let limit = libc::rlimit {
+        rlim_cur: 512 * 1024 * 1024,
+        rlim_max: 512 * 1024 * 1024,
+    };
+    // SAFETY: setrlimit is always safe to call; the worst case is EINVAL which we ignore.
+    let _ = unsafe { libc::setrlimit(libc::RLIMIT_AS, &limit) };
+}
+
+#[cfg(not(target_os = "linux"))]
+fn set_rlimit_as() {}
+
 use auth::password::hash as hash_password;
 use config::AppConfig;
 use db::connect_and_migrate;
@@ -110,14 +126,22 @@ async fn main() -> anyhow::Result<()> {
         models: model_statuses,
     }));
 
+    // ── RLIMIT_AS (parser sandboxing) ────────────────────────────────────────
+    set_rlimit_as();
+
     // ── App state ────────────────────────────────────────────────────────────
     let email_client = ResendClient::new(&config.resend_api_key, &config.resend_from);
+    let ingest_tx = services::broadcast::new_channel();
     let state = AppState {
         db: pool,
         config: Arc::new(config.clone()),
         email: Arc::new(email_client),
         readiness,
+        ingest_tx,
     };
+
+    // ── Background workers ───────────────────────────────────────────────────
+    services::worker::start_workers(state.clone(), config.worker_threads);
 
     // ── Router ───────────────────────────────────────────────────────────────
     use axum::http::HeaderValue;

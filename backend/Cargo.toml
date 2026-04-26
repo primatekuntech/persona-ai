@@ -75,6 +75,36 @@ infer = "0.15"
 
 # System
 num_cpus = "1"
+libc = "0.2"
+tempfile = "3"
+
+# Vector type for pgvector (0.4.x is compatible with sqlx 0.8)
+pgvector = { version = "0.4", features = ["sqlx"] }
+# Embeddings via ONNX Runtime
+# ort-load-dynamic: load libonnxruntime.so at runtime (pre-installed on server)
+# online disabled: model must be pre-downloaded to model_dir (privacy requirement)
+fastembed = { version = "3", default-features = false, features = ["ort-load-dynamic"] }
+# Audio transcription via whisper.cpp (requires C++ toolchain and cmake to compile)
+# Gated behind the "whisper" feature so CI can build without a full C++ toolchain.
+# On the dev box: cargo build --features whisper
+whisper-rs = { version = "0.11", optional = true }
+# Text chunking with sentence awareness
+text-splitter = { version = "0.13", features = ["tokenizers"] }
+# HuggingFace tokenizer for accurate token counting (0.19.x matches text-splitter 0.13)
+tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
+# Zip archive support for docx zip-bomb detection
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# Document parsers
+docx-rs = "0.4"
+lopdf = "0.34"
+pulldown-cmark = "0.11"
+# Encoding detection for plain text files
+encoding_rs = "0.8"
+# Async streams for SSE
+futures = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+# Unicode NFC normalization
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

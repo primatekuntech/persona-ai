@@ -10,6 +10,7 @@ import {
   LogOut,
   MessageSquare,
   Settings,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -80,7 +81,8 @@ export default function PersonaWorkspaceLayout() {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           <SubNavItem to={`${base}/dashboard`} icon={LayoutDashboard} label="Dashboard" />
-          <SubNavItem to={`${base}/documents`} icon={BookOpen} label="Documents" disabled />
+          <SubNavItem to={`${base}/documents`} icon={BookOpen} label="Documents" />
+          <SubNavItem to={`${base}/upload`} icon={Upload} label="Upload" />
           <SubNavItem to={`${base}/chat`} icon={MessageSquare} label="Chat" disabled />
           <SubNavItem to={`${base}/eras`} icon={Calendar} label="Eras" />
           <SubNavItem to={`${base}/settings`} icon={Settings} label="Settings" />

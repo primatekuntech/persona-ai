@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth;
+pub mod documents;
 pub mod health;
 pub mod personas;
 
@@ -69,6 +70,36 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/personas/:id/eras/:era_id",
             delete(personas::delete_era),
+        )
+        // Documents — list + SSE (no body limit adjustment needed for these)
+        .route(
+            "/api/personas/:id/documents",
+            get(documents::list_documents),
+        )
+        .route(
+            "/api/personas/:id/documents/events",
+            get(documents::document_events),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id",
+            get(documents::get_document),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id",
+            delete(documents::delete_document),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id/reingest",
+            post(documents::reingest_document),
+        )
+        .route(
+            "/api/personas/:id/documents/:doc_id/transcript",
+            get(documents::get_transcript),
+        )
+        // Document upload — 512 MB body limit for audio
+        .route(
+            "/api/personas/:id/documents",
+            post(documents::upload_document).layer(DefaultBodyLimit::max(512 * 1024 * 1024)),
         );
 
     // POST /api/admin/invites is rate-limited per sprint spec §1.11 to prevent spam.
