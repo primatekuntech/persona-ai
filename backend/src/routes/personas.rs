@@ -126,8 +126,7 @@ pub async fn list_personas(
         .map(persona_repo::decode_cursor)
         .transpose()?;
 
-    let (items, next_cursor) =
-        persona_repo::list(&state.db, ctx.user_id, limit, cursor).await?;
+    let (items, next_cursor) = persona_repo::list(&state.db, ctx.user_id, limit, cursor).await?;
 
     Ok(Json(Paginated {
         total_estimate: None,
@@ -159,8 +158,7 @@ pub async fn create_persona(
         if let Some(hit) =
             idempotency::check(&state.db, key, ctx.user_id, "/api/personas", &body_hash).await?
         {
-            let status = StatusCode::from_u16(hit.status as u16)
-                .unwrap_or(StatusCode::OK);
+            let status = StatusCode::from_u16(hit.status as u16).unwrap_or(StatusCode::OK);
             return Ok((status, Json(hit.body)).into_response());
         }
     }
@@ -188,8 +186,7 @@ pub async fn create_persona(
     .ok();
 
     if let Some(ref key) = idem_key {
-        let persona_json = serde_json::to_value(&persona)
-            .unwrap_or(serde_json::Value::Null);
+        let persona_json = serde_json::to_value(&persona).unwrap_or(serde_json::Value::Null);
         idempotency::store(
             &state.db,
             key,
@@ -474,10 +471,7 @@ pub struct PatchEraRequest {
     pub description: Option<Option<String>>,
 }
 
-fn validate_era_dates(
-    start_date: Option<Date>,
-    end_date: Option<Date>,
-) -> Result<(), AppError> {
+fn validate_era_dates(start_date: Option<Date>, end_date: Option<Date>) -> Result<(), AppError> {
     if let (Some(s), Some(e)) = (start_date, end_date) {
         if e < s {
             return Err(AppError::ValidationFields(HashMap::from([(
@@ -594,7 +588,7 @@ pub async fn patch_era(
 
     // Fetch existing era once if we need the complementary date for cross-validation.
     let setting_start = start.as_ref().map(|s| s.is_some()).unwrap_or(false);
-    let setting_end   = end.as_ref().map(|e| e.is_some()).unwrap_or(false);
+    let setting_end = end.as_ref().map(|e| e.is_some()).unwrap_or(false);
     let need_existing = (setting_start && end.is_none()) || (setting_end && start.is_none());
 
     let existing = if need_existing {
@@ -622,9 +616,7 @@ pub async fn patch_era(
         body.label.as_deref(),
         start,
         end,
-        body.description
-            .as_ref()
-            .map(|d| d.as_deref()),
+        body.description.as_ref().map(|d| d.as_deref()),
     )
     .await?
     .ok_or(AppError::NotFound)?;

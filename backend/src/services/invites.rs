@@ -33,7 +33,9 @@ pub async fn create(
     // Reject if email already has a live user
     if let Some(existing) = find_by_email(pool, email).await? {
         tracing::info!(email = %email, user_id = %existing.id, "invite rejected: user_exists");
-        return Err(AppError::Conflict { code: "user_exists" });
+        return Err(AppError::Conflict {
+            code: "user_exists",
+        });
     }
 
     let plaintext = generate_token();

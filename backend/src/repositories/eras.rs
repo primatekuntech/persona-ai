@@ -60,14 +60,13 @@ pub async fn create(
     description: Option<&str>,
 ) -> Result<Era, AppError> {
     // Verify persona belongs to user
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM personas WHERE id = $1 AND user_id = $2)",
-    )
-    .bind(persona_id)
-    .bind(user_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::Database)?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM personas WHERE id = $1 AND user_id = $2)")
+            .bind(persona_id)
+            .bind(user_id)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::Database)?;
 
     if !exists {
         return Err(AppError::NotFound);
@@ -107,11 +106,7 @@ pub async fn find_by_id(
     .map_err(AppError::Database)
 }
 
-pub async fn list(
-    pool: &PgPool,
-    persona_id: Uuid,
-    user_id: Uuid,
-) -> Result<Vec<Era>, AppError> {
+pub async fn list(pool: &PgPool, persona_id: Uuid, user_id: Uuid) -> Result<Vec<Era>, AppError> {
     sqlx::query_as(
         r#"SELECT id, persona_id, user_id, label, start_date, end_date, description, created_at, updated_at
            FROM eras
@@ -135,7 +130,8 @@ pub async fn update(
     end_date: Option<Option<Date>>,
     description: Option<Option<&str>>,
 ) -> Result<Option<Era>, AppError> {
-    let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new("UPDATE eras SET updated_at = now()");
+    let mut builder =
+        sqlx::QueryBuilder::<sqlx::Postgres>::new("UPDATE eras SET updated_at = now()");
 
     if let Some(l) = label {
         builder.push(", label = ");
@@ -177,14 +173,12 @@ pub async fn delete(
     persona_id: Uuid,
     user_id: Uuid,
 ) -> Result<bool, AppError> {
-    let result = sqlx::query(
-        "DELETE FROM eras WHERE id = $1 AND persona_id = $2 AND user_id = $3",
-    )
-    .bind(id)
-    .bind(persona_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .map_err(AppError::Database)?;
+    let result = sqlx::query("DELETE FROM eras WHERE id = $1 AND persona_id = $2 AND user_id = $3")
+        .bind(id)
+        .bind(persona_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
     Ok(result.rows_affected() > 0)
 }

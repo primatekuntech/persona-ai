@@ -4,11 +4,7 @@
 /// and `users.status` from the database so that admin demotion or account
 /// disable takes effect immediately without forcing re-login.
 use crate::{error::AppError, state::AppState};
-use axum::{
-    async_trait,
-    extract::FromRequestParts,
-    http::request::Parts,
-};
+use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use tower_sessions::Session;
@@ -115,7 +111,6 @@ impl FromRequestParts<AppState> for AdminCtx {
         Ok(AdminCtx(ctx))
     }
 }
-
 
 #[cfg(test)]
 mod tests {

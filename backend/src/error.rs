@@ -74,24 +74,16 @@ impl IntoResponse for AppError {
                 "Access denied.".to_owned(),
                 None,
             ),
-            AppError::Validation(msg) => (
-                StatusCode::BAD_REQUEST,
-                "validation",
-                msg.clone(),
-                None,
-            ),
+            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, "validation", msg.clone(), None),
             AppError::ValidationFields(f) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "validation_field",
                 "Field validation failed.".to_owned(),
                 Some(f.clone()),
             ),
-            AppError::Conflict { code } => (
-                StatusCode::CONFLICT,
-                *code,
-                "Conflict.".to_owned(),
-                None,
-            ),
+            AppError::Conflict { code } => {
+                (StatusCode::CONFLICT, *code, "Conflict.".to_owned(), None)
+            }
             AppError::RateLimited { retry_after_secs } => {
                 let mut resp = (
                     StatusCode::TOO_MANY_REQUESTS,
@@ -106,7 +98,10 @@ impl IntoResponse for AppError {
                     .into_response();
                 resp.headers_mut().insert(
                     axum::http::header::RETRY_AFTER,
-                    retry_after_secs.to_string().parse().expect("valid header value"),
+                    retry_after_secs
+                        .to_string()
+                        .parse()
+                        .expect("valid header value"),
                 );
                 return resp;
             }

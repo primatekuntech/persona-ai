@@ -70,12 +70,11 @@ pub async fn remove_session(pool: &PgPool, session: &Session) -> Result<(), sqlx
 /// `tower_sessions` in O(user-sessions) rather than scanning the entire sessions table.
 pub async fn revoke_all_sessions(pool: &PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
     // Fetch only this user's raw session IDs — no full-table scan needed.
-    let session_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT session_id FROM session_index WHERE user_id = $1",
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await?;
+    let session_ids: Vec<String> =
+        sqlx::query_scalar("SELECT session_id FROM session_index WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
 
     if !session_ids.is_empty() {
         sqlx::query("DELETE FROM tower_sessions WHERE id = ANY($1)")

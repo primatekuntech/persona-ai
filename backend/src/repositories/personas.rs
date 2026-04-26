@@ -173,9 +173,7 @@ pub async fn list(
     let items: Vec<PersonaWithCounts> = rows.into_iter().take(limit as usize).collect();
 
     let next_cursor = if has_more {
-        items
-            .last()
-            .map(|p| encode_cursor(p.created_at, p.id))
+        items.last().map(|p| encode_cursor(p.created_at, p.id))
     } else {
         None
     };
@@ -192,9 +190,8 @@ pub async fn update(
     description: Option<Option<&str>>,
     birth_year: Option<Option<i32>>,
 ) -> Result<Option<Persona>, AppError> {
-    let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "UPDATE personas SET updated_at = now()",
-    );
+    let mut builder =
+        sqlx::QueryBuilder::<sqlx::Postgres>::new("UPDATE personas SET updated_at = now()");
 
     if let Some(n) = name {
         builder.push(", name = ");
@@ -253,13 +250,12 @@ pub async fn delete(
         }
     };
 
-    let document_ids: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM documents WHERE persona_id = $1",
-    )
-    .bind(id)
-    .fetch_all(&mut *tx)
-    .await
-    .map_err(AppError::Database)?;
+    let document_ids: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM documents WHERE persona_id = $1")
+            .bind(id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
 
     sqlx::query("DELETE FROM personas WHERE id = $1 AND user_id = $2")
         .bind(id)
@@ -302,11 +298,7 @@ pub async fn set_avatar_path(
     Ok(rows.rows_affected() > 0)
 }
 
-pub async fn clear_avatar_path(
-    pool: &PgPool,
-    id: Uuid,
-    user_id: Uuid,
-) -> Result<bool, AppError> {
+pub async fn clear_avatar_path(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
     let rows = sqlx::query(
         "UPDATE personas SET avatar_path = NULL, updated_at = now() WHERE id = $1 AND user_id = $2",
     )

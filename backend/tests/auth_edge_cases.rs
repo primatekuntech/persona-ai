@@ -34,7 +34,7 @@ async fn seed_admin(pool: &PgPool, email: &str) -> Uuid {
 async fn seed_reset_token(pool: &PgPool, user_id: Uuid) -> String {
     // Build a 64-char hex string: UUID hex (32 chars) zero-padded on the left.
     let uuid_hex = Uuid::new_v4().to_string().replace('-', ""); // 32 chars
-    let token_hash = format!("{:0>64}", uuid_hex);              // "00...0<32 chars>" = 64 chars
+    let token_hash = format!("{:0>64}", uuid_hex); // "00...0<32 chars>" = 64 chars
     let expires_at = OffsetDateTime::now_utc() + time::Duration::minutes(30);
     sqlx::query(
         "INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES ($1, $2, $3)",
@@ -137,14 +137,16 @@ async fn expired_reset_token_is_rejected(pool: PgPool) {
 async fn disabled_user_has_disabled_status(pool: PgPool) {
     let user_id = seed_user(&pool, "disabled@example.com", "disabled").await;
 
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
-    assert_eq!(status, "disabled", "seeded user must have status='disabled'");
+    assert_eq!(
+        status, "disabled",
+        "seeded user must have status='disabled'"
+    );
 }
 
 /// Re-enabling a user sets status back to 'active'.
@@ -159,12 +161,11 @@ async fn enabling_user_sets_status_active(pool: PgPool) {
         .await
         .unwrap();
 
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(status, "active");
     drop(admin_id);
@@ -258,5 +259,8 @@ async fn reset_token_scoped_to_correct_user(pool: PgPool) {
     .await
     .unwrap();
 
-    assert!(found_own.is_some(), "owner must be able to use their own token");
+    assert!(
+        found_own.is_some(),
+        "owner must be able to use their own token"
+    );
 }

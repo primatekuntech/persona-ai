@@ -46,10 +46,7 @@ impl AppConfig {
     pub fn load() -> Result<Self, figment::Error> {
         Figment::from(Serialized::defaults(AppConfig::default()))
             .merge(Toml::file("app.toml"))
-            .merge(
-                Env::raw()
-                    .map(|k| k.as_str().to_lowercase().into()),
-            )
+            .merge(Env::raw().map(|k| k.as_str().to_lowercase().into()))
             .extract()
     }
 }

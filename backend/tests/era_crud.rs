@@ -13,14 +13,12 @@ async fn seed_user(pool: &PgPool, email: &str) -> Uuid {
 }
 
 async fn seed_persona(pool: &PgPool, user_id: Uuid, name: &str) -> Uuid {
-    sqlx::query_scalar(
-        "INSERT INTO personas (user_id, name) VALUES ($1, $2) RETURNING id",
-    )
-    .bind(user_id)
-    .bind(name)
-    .fetch_one(pool)
-    .await
-    .expect("seed persona")
+    sqlx::query_scalar("INSERT INTO personas (user_id, name) VALUES ($1, $2) RETURNING id")
+        .bind(user_id)
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .expect("seed persona")
 }
 
 // ─── Authorization boundary ──────────────────────────────────────────────────
@@ -41,14 +39,13 @@ async fn era_list_scoped_to_persona_owner(pool: PgPool) {
         .unwrap();
 
     // User B trying to list eras for User A's persona sees nothing
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM eras WHERE persona_id = $1 AND user_id = $2",
-    )
-    .bind(persona_id)
-    .bind(user_b)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM eras WHERE persona_id = $1 AND user_id = $2")
+            .bind(persona_id)
+            .bind(user_b)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     assert_eq!(count, 0, "user B must not see user A's eras");
 }
@@ -66,13 +63,12 @@ async fn era_label_unique_per_persona(pool: PgPool) {
         .await
         .unwrap();
 
-    let result = sqlx::query(
-        "INSERT INTO eras (persona_id, user_id, label) VALUES ($1, $2, 'Childhood')",
-    )
-    .bind(persona)
-    .bind(user)
-    .execute(&pool)
-    .await;
+    let result =
+        sqlx::query("INSERT INTO eras (persona_id, user_id, label) VALUES ($1, $2, 'Childhood')")
+            .bind(persona)
+            .bind(user)
+            .execute(&pool)
+            .await;
 
     assert!(result.is_err(), "duplicate label in same persona must fail");
 }
@@ -153,13 +149,14 @@ async fn delete_era_nullifies_document_era_id(pool: PgPool) {
     let user = seed_user(&pool, "era_doc_null@example.com").await;
     let persona = seed_persona(&pool, user, "Persona").await;
 
-    let era_id: Uuid =
-        sqlx::query_scalar("INSERT INTO eras (persona_id, user_id, label) VALUES ($1, $2, 'Era 1') RETURNING id")
-            .bind(persona)
-            .bind(user)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let era_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO eras (persona_id, user_id, label) VALUES ($1, $2, 'Era 1') RETURNING id",
+    )
+    .bind(persona)
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
 
     // Insert a minimal document referencing this era
     let doc_id: Uuid = sqlx::query_scalar(
@@ -183,12 +180,14 @@ async fn delete_era_nullifies_document_era_id(pool: PgPool) {
         .unwrap();
 
     // Document still exists but era_id is now NULL
-    let era_col: Option<Uuid> =
-        sqlx::query_scalar("SELECT era_id FROM documents WHERE id = $1")
-            .bind(doc_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let era_col: Option<Uuid> = sqlx::query_scalar("SELECT era_id FROM documents WHERE id = $1")
+        .bind(doc_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
-    assert!(era_col.is_none(), "era_id must be set to NULL after era deletion");
+    assert!(
+        era_col.is_none(),
+        "era_id must be set to NULL after era deletion"
+    );
 }

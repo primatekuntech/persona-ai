@@ -55,13 +55,7 @@ impl ResendClient {
             .await
     }
 
-    async fn send(
-        &self,
-        to: &str,
-        subject: &str,
-        html: &str,
-        text: &str,
-    ) -> Result<(), AppError> {
+    async fn send(&self, to: &str, subject: &str, html: &str, text: &str) -> Result<(), AppError> {
         let payload = json!({
             "from": self.from,
             "to": [to],

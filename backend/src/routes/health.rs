@@ -8,10 +8,7 @@ use serde_json::json;
 
 pub async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
     // Check DB connectivity
-    let db_ok = sqlx::query("SELECT 1")
-        .execute(&state.db)
-        .await
-        .is_ok();
+    let db_ok = sqlx::query("SELECT 1").execute(&state.db).await.is_ok();
 
     let readiness = state.readiness.read().expect("readiness lock");
     let degraded_models: Vec<_> = readiness
@@ -31,10 +28,7 @@ pub async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
     }
 
     if degraded_models.is_empty() {
-        (
-            StatusCode::OK,
-            Json(json!({ "status": "ok", "db": true })),
-        )
+        (StatusCode::OK, Json(json!({ "status": "ok", "db": true })))
     } else {
         (
             StatusCode::OK,
