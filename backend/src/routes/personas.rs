@@ -418,12 +418,12 @@ pub async fn get_avatar(
         }
     })?;
 
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/webp")
         .header(header::CACHE_CONTROL, "private, max-age=3600")
         .body(Body::from(bytes))
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("build response: {e}")))?)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("build response: {e}")))
 }
 
 pub async fn delete_avatar(

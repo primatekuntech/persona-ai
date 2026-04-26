@@ -58,7 +58,7 @@ pub fn build_router(state: AppState) -> Router {
         // Avatar — raise body limit so our in-handler 2 MB check fires with the correct error envelope.
         .route(
             "/api/personas/:id/avatar",
-            post(personas::upload_avatar.layer(DefaultBodyLimit::max(10 * 1024 * 1024))),
+            post(personas::upload_avatar).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
         .route("/api/personas/:id/avatar", get(personas::get_avatar))
         .route("/api/personas/:id/avatar", delete(personas::delete_avatar))

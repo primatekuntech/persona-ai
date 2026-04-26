@@ -120,6 +120,7 @@ pub async fn list(pool: &PgPool, persona_id: Uuid, user_id: Uuid) -> Result<Vec<
     .map_err(AppError::Database)
 }
 
+#[allow(clippy::too_many_arguments)] // all args are semantically distinct; a struct would add noise
 pub async fn update(
     pool: &PgPool,
     id: Uuid,
