@@ -94,7 +94,7 @@ async fn invite_conflicts_when_user_already_exists(pool: PgPool) {
         "no invite should be created for existing user"
     );
 
-    drop(admin_id); // used for compilation
+    let _ = admin_id;
 }
 
 // ─── AT-9b: disabled user also blocks invite ────────────────────────────────
@@ -123,7 +123,7 @@ async fn invite_conflicts_when_disabled_user_exists(pool: PgPool) {
         "disabled user should still be found by user_exists check"
     );
 
-    drop(admin_id);
+    let _ = admin_id;
 }
 
 // ─── AT-10: invite_pending ───────────────────────────────────────────────────

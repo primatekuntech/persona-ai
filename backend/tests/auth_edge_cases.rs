@@ -168,7 +168,7 @@ async fn enabling_user_sets_status_active(pool: PgPool) {
         .unwrap();
 
     assert_eq!(status, "active");
-    drop(admin_id);
+    let _ = admin_id;
 }
 
 // ─── Role change is immediately visible (no session caching) ─────────────────

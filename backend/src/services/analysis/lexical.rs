@@ -270,7 +270,10 @@ mod tests {
         assert_eq!(p.vocabulary_level, "basic");
 
         // Diverse text → higher TTR → advanced
-        let words: Vec<String> = (0..300).map(|i| format!("uniqueword{i}")).collect();
+        let words: Vec<String> = ('a'..='z')
+            .flat_map(|a| ('a'..='z').map(move |b| format!("{a}{b}")))
+            .take(300)
+            .collect();
         let diverse = words.join(" ");
         let chunks2 = vec![chunk(&diverse)];
         let p2 = compute(&chunks2);
