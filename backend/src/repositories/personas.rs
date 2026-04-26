@@ -71,7 +71,7 @@ pub async fn create(
 ) -> Result<Persona, AppError> {
     let mut tx = pool.begin().await.map_err(AppError::Database)?;
 
-    let (current, quota): (i64, i64) = sqlx::query_as(
+    let (current, quota): (i32, i32) = sqlx::query_as(
         "SELECT current_persona_count, quota_persona_count FROM users WHERE id = $1 FOR UPDATE",
     )
     .bind(user_id)

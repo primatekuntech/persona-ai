@@ -158,7 +158,7 @@ async fn delete_persona_concurrent_second_returns_nothing(pool: PgPool) {
 async fn persona_count_increments_on_create(pool: PgPool) {
     let user = seed_user(&pool, "quota_inc@example.com").await;
 
-    let before: i64 = sqlx::query_scalar("SELECT current_persona_count FROM users WHERE id = $1")
+    let before: i32 = sqlx::query_scalar("SELECT current_persona_count FROM users WHERE id = $1")
         .bind(user)
         .fetch_one(&pool)
         .await
@@ -176,7 +176,7 @@ async fn persona_count_increments_on_create(pool: PgPool) {
         .await
         .unwrap();
 
-    let after: i64 = sqlx::query_scalar("SELECT current_persona_count FROM users WHERE id = $1")
+    let after: i32 = sqlx::query_scalar("SELECT current_persona_count FROM users WHERE id = $1")
         .bind(user)
         .fetch_one(&pool)
         .await
