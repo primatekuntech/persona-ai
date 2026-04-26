@@ -69,8 +69,8 @@ async fn document_scoped_to_owner(pool: PgPool) {
     .unwrap();
 
     let doc_id: Uuid = sqlx::query_scalar(
-        r#"INSERT INTO documents (user_id, persona_id, title, source_type, status)
-           VALUES ($1, $2, 'Secret Doc', 'text', 'ready')
+        r#"INSERT INTO documents (user_id, persona_id, title, kind, mime_type, original_path, content_hash, size_bytes, status)
+           VALUES ($1, $2, 'Secret Doc', 'text', 'text/plain', '/data/doc.txt', 'deadbeef', 0, 'pending')
            RETURNING id"#,
     )
     .bind(user_a)
@@ -108,8 +108,8 @@ async fn chat_session_scoped_to_owner(pool: PgPool) {
     .unwrap();
 
     let chat_id: Uuid = sqlx::query_scalar(
-        r#"INSERT INTO chat_sessions (user_id, persona_id, title)
-           VALUES ($1, $2, 'Private chat')
+        r#"INSERT INTO chat_sessions (user_id, persona_id, title, model_id)
+           VALUES ($1, $2, 'Private chat', 'test-model')
            RETURNING id"#,
     )
     .bind(user_a)
