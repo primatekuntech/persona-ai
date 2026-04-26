@@ -1,9 +1,10 @@
 pub mod admin;
 pub mod auth;
 pub mod health;
+pub mod personas;
 
 use crate::state::AppState;
-use axum::{routing::{delete, get, patch, post}, Router};
+use axum::{extract::DefaultBodyLimit, routing::{delete, get, patch, post}, Router};
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use std::sync::Arc;
 
@@ -40,7 +41,22 @@ pub fn build_router(state: AppState) -> Router {
     let protected_routes = Router::new()
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/sessions/revoke-all", post(auth::revoke_all_sessions))
-        .route("/api/auth/me", get(auth::me));
+        .route("/api/auth/me", get(auth::me))
+        // Persona CRUD
+        .route("/api/personas", get(personas::list_personas))
+        .route("/api/personas", post(personas::create_persona))
+        .route("/api/personas/:id", get(personas::get_persona))
+        .route("/api/personas/:id", patch(personas::patch_persona))
+        .route("/api/personas/:id", delete(personas::delete_persona))
+        // Avatar — raise body limit so our in-handler 2 MB check fires with the correct error envelope.
+        .route("/api/personas/:id/avatar", post(personas::upload_avatar.layer(DefaultBodyLimit::max(10 * 1024 * 1024))))
+        .route("/api/personas/:id/avatar", get(personas::get_avatar))
+        .route("/api/personas/:id/avatar", delete(personas::delete_avatar))
+        // Eras
+        .route("/api/personas/:id/eras", get(personas::list_eras))
+        .route("/api/personas/:id/eras", post(personas::create_era))
+        .route("/api/personas/:id/eras/:era_id", patch(personas::patch_era))
+        .route("/api/personas/:id/eras/:era_id", delete(personas::delete_era));
 
     // POST /api/admin/invites is rate-limited per sprint spec §1.11 to prevent spam.
     let admin_write_routes = Router::new()

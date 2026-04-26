@@ -6,7 +6,7 @@
 use crate::{error::AppError, state::AppState};
 use axum::{
     async_trait,
-    extract::{FromRequestParts, State},
+    extract::FromRequestParts,
     http::request::Parts,
 };
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,6 @@ pub enum UserStatus {
 pub struct UserCtx {
     pub user_id: Uuid,
     pub role: Role,
-    pub status: UserStatus,
 }
 
 #[derive(Debug, FromRow)]
@@ -94,7 +93,6 @@ impl FromRequestParts<AppState> for UserCtx {
         Ok(UserCtx {
             user_id: row.id,
             role,
-            status,
         })
     }
 }
@@ -118,9 +116,6 @@ impl FromRequestParts<AppState> for AdminCtx {
     }
 }
 
-/// Re-export the `AdminCtx` extractor under the conventional name used in handlers.
-pub fn require_auth() {}
-pub fn require_admin() {}
 
 #[cfg(test)]
 mod tests {

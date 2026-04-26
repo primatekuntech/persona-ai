@@ -1,6 +1,6 @@
 /// Admin route handlers: invites and users management.
 use crate::{
-    auth::middleware::{AdminCtx, UserCtx},
+    auth::middleware::AdminCtx,
     error::AppError,
     repositories::{invites as invite_repo, users as user_repo},
     services::invites as invite_svc,

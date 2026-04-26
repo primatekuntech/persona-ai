@@ -97,6 +97,7 @@ pub async fn touch_login(pool: &PgPool, user_id: Uuid) -> Result<(), AppError> {
 }
 
 /// Update password hash. Called after password reset.
+#[allow(dead_code)]
 pub async fn set_password(
     pool: &PgPool,
     user_id: Uuid,

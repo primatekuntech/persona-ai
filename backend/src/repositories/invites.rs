@@ -187,6 +187,7 @@ pub async fn create_password_reset(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn find_active_reset(
     pool: &PgPool,
     token_hash: &str,

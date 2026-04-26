@@ -4,7 +4,7 @@ use crate::{
     auth::{
         middleware::UserCtx,
         password::{dummy_verify, hash, validate_new_password, verify},
-        session::{record_session, remove_session, revoke_all_sessions, SESSION_USER_ID_KEY},
+        session::{record_session, remove_session, SESSION_USER_ID_KEY},
     },
     error::AppError,
     repositories::{
