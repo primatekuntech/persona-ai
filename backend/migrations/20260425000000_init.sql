@@ -89,11 +89,13 @@ CREATE TABLE invite_tokens (
     used_by     UUID REFERENCES users(id),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- At most one active (unused, unexpired) invite per email.
--- Enforces invite_pending 409 before a second invite can be created.
+-- At most one pending (unused) invite per email.
+-- expires_at is NOT included in the predicate: now() is VOLATILE and
+-- Postgres requires IMMUTABLE functions in index predicates. Expiry
+-- is enforced at the application layer in repositories/invites.rs.
 CREATE UNIQUE INDEX invite_tokens_active_email_uniq
     ON invite_tokens (email)
-    WHERE used_at IS NULL AND expires_at > now();
+    WHERE used_at IS NULL;
 
 -- Password reset tokens: same shape as invite tokens, TTL 30 min.
 CREATE TABLE password_resets (
