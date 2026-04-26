@@ -10,6 +10,9 @@ import Personas from "@/pages/Personas";
 import Settings from "@/pages/Settings";
 import AdminUsers from "@/pages/admin/Users";
 import AdminInvites from "@/pages/admin/Invites";
+import AdminJobs from "@/pages/admin/Jobs";
+import AdminErrors from "@/pages/admin/Errors";
+import AdminAudit from "@/pages/admin/Audit";
 import PersonaDashboard from "@/pages/personas/Dashboard";
 import ErasPage from "@/pages/personas/Eras";
 import PersonaSettings from "@/pages/personas/PersonaSettings";
@@ -84,6 +87,30 @@ export default function App() {
             element={
               <RequireAdmin>
                 <AdminInvites />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/jobs"
+            element={
+              <RequireAdmin>
+                <AdminJobs />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/errors"
+            element={
+              <RequireAdmin>
+                <AdminErrors />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/audit"
+            element={
+              <RequireAdmin>
+                <AdminAudit />
               </RequireAdmin>
             }
           />

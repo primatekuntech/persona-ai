@@ -169,6 +169,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Background workers ───────────────────────────────────────────────────
     services::worker::start_workers(state.clone(), config.worker_threads);
+    services::cleanup::start_cleanup(state.clone());
 
     // ── Router ───────────────────────────────────────────────────────────────
     use axum::http::HeaderValue;
@@ -187,7 +188,24 @@ async fn main() -> anyhow::Result<()> {
         .layer(SetResponseHeaderLayer::overriding(
             axum::http::header::HeaderName::from_static("referrer-policy"),
             HeaderValue::from_static("same-origin"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("content-security-policy"),
+            HeaderValue::from_static(
+                "default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
+            ),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("permissions-policy"),
+            HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
         ));
+
+    if is_production {
+        app = app.layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("strict-transport-security"),
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ));
+    }
 
     if config.dev_cors {
         tracing::warn!("DEV CORS enabled — do not use in production");

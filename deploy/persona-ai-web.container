@@ -1,0 +1,22 @@
+[Unit]
+Description=Persona AI — Caddy web + proxy
+After=persona-ai-backend.service network-online.target
+Requires=persona-ai-backend.service
+
+[Container]
+Image=localhost/persona-ai/frontend:latest
+ContainerName=persona-ai-web
+EnvironmentFile=/opt/persona-ai/caddy.env
+Volume=/var/lib/persona-ai/caddy_data:/data:Z
+Volume=/var/lib/persona-ai/caddy_config:/config:Z
+PublishPort=80:80
+PublishPort=443:443
+PublishPort=443:443/udp
+Network=persona-ai.network
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target

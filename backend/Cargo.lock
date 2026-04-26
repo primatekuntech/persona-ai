@@ -903,7 +903,7 @@ dependencies = [
  "block-buffer",
  "const-oid",
  "crypto-common",
- "subtle",
+ "subtle 2.6.1",
 ]
 
 [[package]]
@@ -2633,7 +2633,7 @@ checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
 dependencies = [
  "base64ct",
  "rand_core 0.6.4",
- "subtle",
+ "subtle 2.6.1",
 ]
 
 [[package]]
@@ -2702,6 +2702,7 @@ dependencies = [
  "figment",
  "futures",
  "hex",
+ "hmac",
  "image",
  "infer",
  "libc",
@@ -2718,6 +2719,7 @@ dependencies = [
  "sha2",
  "sha3",
  "sqlx",
+ "subtle 1.0.0",
  "tempfile",
  "text-splitter",
  "thiserror 1.0.69",
@@ -2736,6 +2738,7 @@ dependencies = [
  "unicode-normalization",
  "uuid",
  "validator",
+ "walkdir",
  "whisper-rs",
  "zip 2.4.2",
 ]
@@ -3396,7 +3399,7 @@ dependencies = [
  "rand_core 0.6.4",
  "signature",
  "spki",
- "subtle",
+ "subtle 2.6.1",
  "zeroize",
 ]
 
@@ -3463,7 +3466,7 @@ dependencies = [
  "ring",
  "rustls-pki-types",
  "rustls-webpki",
- "subtle",
+ "subtle 2.6.1",
  "zeroize",
 ]
 
@@ -3985,6 +3988,12 @@ dependencies = [
  "rustversion",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "subtle"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d67a5a62ba6e01cb2192ff309324cb4875d0c451d55fe2319433abe7a05a8ee"
 
 [[package]]
 name = "subtle"

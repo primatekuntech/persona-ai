@@ -18,7 +18,7 @@ use crate::{
 };
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -27,7 +27,6 @@ use serde_json::json;
 use std::net::IpAddr;
 use time::{Duration, OffsetDateTime};
 use tower_sessions::Session;
-use uuid::Uuid;
 
 // ─── Login / Logout ─────────────────────────────────────────────────────────
 
@@ -131,7 +130,19 @@ pub async fn login(
 
     crate::audit::log(&state.db, Some(user.id), "user.login", None, None, ip, None).await?;
 
-    Ok(StatusCode::NO_CONTENT)
+    // Issue CSRF token and set cookie
+    let csrf_token = crate::auth::csrf::generate_token();
+    session.insert("csrf_token", csrf_token.clone()).await.ok();
+    let is_prod = std::env::var("RUST_ENV").as_deref() == Ok("production");
+    let secure = if is_prod { "; Secure" } else { "" };
+    let cookie = format!("pai_csrf={csrf_token}; Path=/; SameSite=Lax{secure}");
+
+    let mut resp = StatusCode::NO_CONTENT.into_response();
+    resp.headers_mut().insert(
+        axum::http::header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).unwrap_or(HeaderValue::from_static("pai_csrf=x; Path=/")),
+    );
+    Ok(resp)
 }
 
 pub async fn logout(
@@ -164,6 +175,7 @@ pub async fn logout(
 pub async fn revoke_all_sessions(
     State(state): State<AppState>,
     ctx: UserCtx,
+    session: Session,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     let ip = extract_ip(&headers);
@@ -180,31 +192,57 @@ pub async fn revoke_all_sessions(
     )
     .await?;
 
-    Ok(StatusCode::NO_CONTENT)
-}
+    // Rotate CSRF token after revoking all sessions
+    let csrf_token = crate::auth::csrf::generate_token();
+    session.insert("csrf_token", csrf_token.clone()).await.ok();
+    let is_prod = std::env::var("RUST_ENV").as_deref() == Ok("production");
+    let secure = if is_prod { "; Secure" } else { "" };
+    let cookie = format!("pai_csrf={csrf_token}; Path=/; SameSite=Lax{secure}");
 
-#[derive(Serialize)]
-pub struct MeResponse {
-    pub user_id: Uuid,
-    pub email: String,
-    pub role: String,
-    pub display_name: Option<String>,
+    let mut resp = StatusCode::NO_CONTENT.into_response();
+    resp.headers_mut().insert(
+        axum::http::header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).unwrap_or(HeaderValue::from_static("pai_csrf=x; Path=/")),
+    );
+    Ok(resp)
 }
 
 pub async fn me(
     State(state): State<AppState>,
     ctx: UserCtx,
+    session: Session,
 ) -> Result<impl IntoResponse, AppError> {
     let user = crate::repositories::users::find_by_id(&state.db, ctx.user_id)
         .await?
         .ok_or(AppError::Unauthorized)?;
 
-    Ok(Json(MeResponse {
-        user_id: user.id,
-        email: user.email,
-        role: user.role,
-        display_name: user.display_name,
-    }))
+    // Ensure a CSRF token exists and set/refresh the cookie
+    let csrf_token =
+        if let Some(existing) = session.get::<String>("csrf_token").await.ok().flatten() {
+            existing
+        } else {
+            let tok = crate::auth::csrf::generate_token();
+            session.insert("csrf_token", tok.clone()).await.ok();
+            tok
+        };
+
+    let is_prod = std::env::var("RUST_ENV").as_deref() == Ok("production");
+    let secure = if is_prod { "; Secure" } else { "" };
+    let cookie = format!("pai_csrf={csrf_token}; Path=/; SameSite=Lax{secure}");
+
+    let body = serde_json::json!({
+        "user_id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "display_name": user.display_name,
+    });
+
+    let mut resp = Json(body).into_response();
+    resp.headers_mut().insert(
+        axum::http::header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).unwrap_or(HeaderValue::from_static("pai_csrf=x; Path=/")),
+    );
+    Ok(resp)
 }
 
 // ─── Password reset ─────────────────────────────────────────────────────────

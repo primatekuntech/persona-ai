@@ -1,0 +1,23 @@
+[Unit]
+Description=Persona AI — PostgreSQL database
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/pgvector/pgvector:pg16
+ContainerName=persona-ai-db
+Environment=POSTGRES_USER=persona
+Environment=POSTGRES_DB=persona
+EnvironmentFile=/opt/persona-ai/db.env
+Volume=/var/lib/persona-ai/pgdata:/var/lib/postgresql/data:Z
+Network=persona-ai.network
+HealthCmd=pg_isready -U persona
+HealthInterval=10s
+HealthRetries=5
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

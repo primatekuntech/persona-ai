@@ -34,8 +34,10 @@ password-hash = { version = "0.5", features = ["rand_core"] }
 # Cryptography
 sha2 = "0.10"
 sha3 = "0.10"
+hmac = "0.12"
 hex = "0.4"
 base64 = "0.22"
+subtle = "1"
 
 # Randomness
 rand = "0.8"
@@ -77,6 +79,7 @@ infer = "0.15"
 num_cpus = "1"
 libc = "0.2"
 tempfile = "3"
+walkdir = "2"
 
 # Vector type for pgvector (0.4.x is compatible with sqlx 0.8)
 pgvector = { version = "0.4", features = ["sqlx"] }
