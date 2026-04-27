@@ -197,7 +197,7 @@ podman compose -f compose.prod.yml up -d
 
 ## 12. Rotate SESSION_SECRET
 
-Rotating the secret invalidates all active sessions — every user must log in again.
+Rotating the secret invalidates **all active sessions and all stored provider API keys** — every user must log in again and re-enter any cloud provider API keys (OpenAI, Google Speech, etc.) they had configured in Settings → Integrations. The `provider_configs` rows are not deleted, but the encrypted API key fields will fail to decrypt and the provider will be unusable until re-keyed.
 
 ```bash
 new_secret=$(openssl rand -hex 32)
@@ -205,7 +205,27 @@ sed -i "s/SESSION_SECRET=.*/SESSION_SECRET=$new_secret/" /opt/persona-ai/.env
 podman compose -f compose.prod.yml restart backend
 ```
 
-## 13. Change LLM model
+Notify users before rotating in production.
+
+## 13. Provider configs (cloud AI services)
+
+Users manage cloud providers themselves via **Settings → Integrations**. No server-side action is required to add or remove an OpenAI-compatible or Google Speech provider.
+
+To inspect or clear a user's provider configs from the database:
+
+```bash
+# List provider configs for a user (replace <user_id>)
+podman exec -it persona-ai-db psql -U persona -d persona \
+  -c "SELECT id, service, provider, priority, enabled FROM provider_configs WHERE user_id = '<user_id>';"
+
+# Disable a specific config (provider still usable; just deprioritised to opt-out)
+podman exec -it persona-ai-db psql -U persona -d persona \
+  -c "UPDATE provider_configs SET enabled = false WHERE id = '<config_id>';"
+```
+
+API keys are stored AES-256-GCM encrypted. They cannot be read from the database. If a user loses their key, they must re-enter it via Settings → Integrations.
+
+## 14. Change LLM model
 
 ```bash
 # Copy new GGUF into the model directory
@@ -218,7 +238,7 @@ sed -i "s|MODEL_PATH=.*|MODEL_PATH=/data/models/llm/new-model.gguf|" /opt/person
 podman compose -f compose.prod.yml restart backend
 ```
 
-## 14. Firewall
+## 15. Firewall
 
 Only ports 80 and 443 need to be publicly reachable. Postgres and the backend
 port (8080) are not exposed externally.
@@ -231,7 +251,7 @@ sudo ufw allow 443/udp   # HTTP/3 QUIC
 sudo ufw enable
 ```
 
-## 15. Observability
+## 16. Observability
 
 Logs are structured JSON in production (`RUST_ENV=production`).  Stream them
 with:

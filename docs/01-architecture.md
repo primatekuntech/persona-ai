@@ -15,10 +15,12 @@
 │   • /personas/:id/upload              │     │      analysis, chat, export, admin)   │
 │   • /personas/:id/chat                │     │   4. Workers (background tasks:       │
 │   • /admin/users, /admin/invites      │     │      transcribe, chunk, embed,        │
-│                                       │     │      analyse)                         │
-│  State: TanStack Query + Zustand      │     │   5. Repositories (sqlx → Postgres)   │
-│  UI: shadcn/ui + Tailwind             │     │   6. Model runtimes (whisper, llama,  │
-└───────────────────────────────────────┘     │      fastembed)                       │
+│   • /settings/integrations            │     │      analyse)                         │
+│                                       │     │   5. Repositories (sqlx → Postgres)   │
+│  State: TanStack Query + Zustand      │     │   6. Model runtimes (whisper, llama,  │
+│  UI: shadcn/ui + Tailwind             │     │      fastembed)                       │
+└───────────────────────────────────────┘     │   7. Provider registry (local-first;  │
+                                              │      cloud providers opt-in)          │
                                               └────────────────┬──────────────────────┘
                                                                │
                         ┌──────────────────────────────────────┼──────────────────────────────────────┐
@@ -51,9 +53,13 @@ Everything except static model files lives in a single Postgres database. This k
 | Password hashing | `argon2` | OWASP-current |
 | Random | `rand` | Invite tokens, session ids |
 | Email | `resend-rs` (or raw `reqwest` to Resend) | Invite + reset emails |
-| Audio | `whisper-rs` | whisper.cpp bindings |
-| Embeddings | `fastembed` (crate) | bge-small-en-v1.5 on CPU |
+| Audio | `whisper-rs` | whisper.cpp bindings (Whisper large-v3, multilingual) |
+| Embeddings | `fastembed` (crate) | BAAI/bge-m3 on CPU (100+ languages) |
 | LLM | `llama-cpp-2` | llama.cpp bindings |
+| Language detection | `lingua` | Text language detection for 100+ languages |
+| Key derivation | `hkdf` | HKDF-SHA256 for provider API key encryption |
+| Encryption | `aes-gcm` | AES-256-GCM for stored API keys |
+| Async traits | `async-trait` | Provider trait objects |
 | Text extraction | `docx-rs`, `lopdf`, `pulldown-cmark` | .docx, .pdf, .md parsing |
 | Chunking | `text-splitter` | Sentence-aware chunker |
 | Doc export | `docx-rs` | .docx writer |
@@ -90,11 +96,11 @@ Everything except static model files lives in a single Postgres database. This k
 
 | Tool | Purpose |
 |------|---------|
-| Docker | Package and run Postgres + app |
-| docker-compose | Dev and prod orchestration |
+| Podman | Package and run Postgres + app (rootless, OCI-compatible) |
+| podman compose | Dev and prod orchestration (also supports Quadlet/systemd) |
 | Caddy | Reverse proxy + auto HTTPS (Let's Encrypt) |
 | Postgres 16 + pgvector | Database + vector store |
-| systemd | Optional alternative to docker for the app |
+| systemd / Quadlet | Podman-native alternative to compose for production |
 | rsync / cron | Backups |
 
 ## Runtime model
@@ -113,15 +119,15 @@ Everything except static model files lives in a single Postgres database. This k
 | Component | Count | RAM each | Subtotal |
 |-----------|-------|----------|----------|
 | LLM (Qwen2.5-7B Q4_K_M) | 1 | 5.5 GB | 5.5 GB |
-| Whisper contexts (small.en) | 2 | ~1.0 GB | 2.0 GB |
-| Embedder (bge-small ONNX) | 1 (shared) | ~300 MB | 0.3 GB |
+| Whisper contexts (large-v3) | 2 | ~3.0 GB | 6.0 GB |
+| Embedder (bge-m3 ONNX) | 1 (shared) | ~1.0 GB | 1.0 GB |
 | Postgres (default tuning + pgvector) | 1 | ~1.5 GB | 1.5 GB |
 | App overhead + misc | — | — | ~1.0 GB |
 | OS + kernel | — | — | ~1.0 GB |
-| **Total committed** | | | **~11.3 GB** |
-| **Headroom** | | | ~4.7 GB |
+| **Total committed** | | | **~16.0 GB** |
+| **Headroom** | | | ~0 GB on 16 GB; use 32 GB recommended |
 
-On 8 GB boxes: drop to `whisper-base.en` (~250 MB each), reduce `MAX_CONCURRENT_WHISPER` to 1, consider a 3.8B LLM.
+On 16 GB boxes: set `MAX_CONCURRENT_WHISPER` to 1 (saves 3 GB), or swap to `whisper-medium` (~1.5 GB each). On 8 GB boxes: use `whisper-base.en` and a 3.8B LLM. The 32 GB tier is the comfortable production target for the multilingual stack.
 
 ## Directory layout on disk (VPS)
 
@@ -136,8 +142,8 @@ On 8 GB boxes: drop to `whisper-base.en` (~250 MB each), reduce `MAX_CONCURRENT_
   transcripts/<doc_id>.txt               # whisper output
   exports/<user_id>/<timestamp>.docx     # user-triggered exports
   models/
-    ggml-small.en.bin
-    bge-small-en-v1.5/
+    ggml-large-v3.bin
+    bge-m3/
       model.onnx
       tokenizer.json
       config.json

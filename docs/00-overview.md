@@ -55,6 +55,8 @@ This reliably captures surface style (word choice, rhythm, imagery, opening gamb
 | **Style Profile** | A JSON document, recomputed after ingestion, summarising lexical, syntactic, semantic, and stylistic features of a persona's corpus. |
 | **Exemplar** | A chunk retrieved at query time to ground generation. |
 | **Session** | A chat conversation with one persona (optionally one era). Holds message history. |
+| **Provider** | An AI service implementation: local (Whisper, llama.cpp, bge-m3) or cloud (OpenAI-compatible endpoint, Google Speech). Stored in `provider_configs`; tried in priority order. |
+| **Language** | BCP-47 language code detected from a document's text (via `lingua`) or audio (via Whisper output). Stored in `documents.detected_language`. Used to route audio to the most capable transcription provider. |
 
 ## What this system is **not**
 
@@ -63,7 +65,7 @@ This reliably captures surface style (word choice, rhythm, imagery, opening gamb
 - Not a fine-tuning platform. No GPU, no weight updates in v1.
 - Not a social network. No sharing of personas between users.
 - Not a publishing tool. Export produces private documents; distribution is the user's problem.
-- Not multilingual in v1 — English only. See [`04-models.md`](04-models.md) for the v2 upgrade path.
+- Not a translation tool. The system preserves the language the corpus was written in; it does not translate between languages.
 
 ## Ownership of outputs
 
@@ -83,6 +85,7 @@ Each of these has been considered and deferred. Documented here so they are not 
 - **Formal ToS / privacy policy.** Honest `/settings/about` page serves the purpose for invited users.
 - **PDF export, URL import, Twitter archive import, OCR.** Scope grows v2.
 - **Regenerate / branch chat messages, message feedback (thumbs).** v2.
+- **Azure Speech provider.** Schema supports it (`azure_speech` in the check constraint); implementation deferred to v2.
 
 ## Success criteria (v1)
 
@@ -92,6 +95,8 @@ Each of these has been considered and deferred. Documented here so they are not 
 - Chat generates responses that a reader who knows the persona's corpus recognises as "in their voice".
 - Response export produces a readable `.docx`.
 - End-to-end, runs on a 16 GB RAM VPS with no external LLM calls.
+- Uploading a Mandarin, Malay, or Cantonese document produces a detected language label and is retrievable via RAG.
+- Users who opt in to a cloud provider (OpenAI-compatible or Google Speech) can configure and test it from Settings → Integrations without touching server config.
 
 ## Related documents
 

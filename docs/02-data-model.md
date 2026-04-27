@@ -19,6 +19,7 @@ users ─┬─< tower_sessions (library-managed)
        ├─< password_resets
        ├─< login_attempts
        ├─< audit_log
+       ├─< provider_configs (per-service AI provider settings)
        └─< personas ─┬─< eras
                      ├─< documents ──< chunks (embedding vector)
                      ├─< style_profiles (one per persona, per era optional)
@@ -183,6 +184,7 @@ CREATE TABLE documents (
     status          TEXT NOT NULL CHECK (status IN (
                         'pending','parsing','transcribing','chunking','embedding','analysing','done','failed')
                      ) DEFAULT 'pending',
+    detected_language TEXT,                            -- BCP-47 code; set after ingestion (lingua for text, Whisper for audio)
     error           TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     ingested_at     TIMESTAMPTZ
@@ -202,7 +204,7 @@ CREATE TABLE chunks (
     chunk_index     INT NOT NULL,
     text            TEXT NOT NULL,
     token_count     INT NOT NULL,
-    embedding       vector(384),                     -- bge-small-en-v1.5; nullable during ingestion, populated by embed phase
+    embedding       vector(1024),                    -- BAAI/bge-m3; nullable during ingestion, populated by embed phase
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX chunks_embedding_idx
@@ -324,6 +326,32 @@ CREATE INDEX ON idempotency_keys (created_at);
 -- Pruned daily; rows > 24h old deleted.
 ```
 
+### Provider configs
+
+Per-user AI provider configurations. Local providers (priority 0) are inserted automatically on user creation and cannot be deleted, only disabled. Cloud providers are user-managed.
+
+```sql
+CREATE TABLE provider_configs (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    service     TEXT NOT NULL CHECK (service IN ('transcription', 'llm', 'embeddings')),
+    provider    TEXT NOT NULL,
+    -- local:  'local_whisper' | 'local_llama' | 'local_bge'
+    -- cloud:  'openai_compat' | 'google_speech'
+    priority    INT  NOT NULL DEFAULT 10,
+    -- lower number = tried first; local providers default to priority 0
+    config      JSONB NOT NULL DEFAULT '{}',
+    -- sensitive fields (api_key, endpoint) stored AES-256-GCM encrypted as {"enc": "<base64>"}
+    -- non-sensitive fields stored plaintext: {"model": "gpt-4o-mini", ...}
+    enabled     BOOL NOT NULL DEFAULT true,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, service, provider)
+);
+CREATE INDEX ON provider_configs (user_id, service, priority) WHERE enabled;
+```
+
+API key encryption uses AES-256-GCM; the 32-byte key is derived from `SESSION_SECRET` via `HKDF-SHA256(secret, salt="provider-key-v1", len=32)`. Rotating `SESSION_SECRET` invalidates all stored API keys — see runbook §12.
+
 ### Errors
 
 Captured at the middleware layer for admin investigation.
@@ -351,7 +379,7 @@ What happens when each top-level row is deleted. All cascades are via `ON DELETE
 
 | Deleting… | Cascades to |
 |-----------|-------------|
-| `users` | `personas`, `eras`, `documents`, `chunks`, `style_profiles`, `chat_sessions`, `messages`, `session_index`, `password_resets`, `audit_log` (nullifies `user_id`; keeps row), `errors` (nullifies `user_id`; keeps row), `idempotency_keys`, `jobs` (where `jobs.user_id = users.id`). `login_attempts` and `invite_tokens` rows remain for audit. Filesystem cleanup (uploads / transcripts / avatars / exports) runs in a follow-up job. |
+| `users` | `personas`, `eras`, `documents`, `chunks`, `style_profiles`, `chat_sessions`, `messages`, `session_index`, `password_resets`, `audit_log` (nullifies `user_id`; keeps row), `errors` (nullifies `user_id`; keeps row), `idempotency_keys`, `jobs` (where `jobs.user_id = users.id`), `provider_configs`. `login_attempts` and `invite_tokens` rows remain for audit. Filesystem cleanup (uploads / transcripts / avatars / exports) runs in a follow-up job. |
 | `personas` | `eras`, `documents` → `chunks`, `style_profiles`, `chat_sessions` → `messages`, `jobs` (where `jobs.persona_id = personas.id`). Filesystem: `/data/uploads/<persona_id>/`, `/data/transcripts/<doc_id>.txt` for its docs, `/data/avatars/<persona_id>.*` cleaned in a follow-up job. |
 | `eras` | `era_id` is set to NULL on dependents (`documents.era_id`, `chunks.era_id`, `chat_sessions.era_id`), **except** `style_profiles(era_id)` which cascades (profiles are per-era and meaningless without the era). |
 | `documents` | `chunks`. Filesystem cleanup for `original_path` + `transcript_path` in a follow-up job. |

@@ -1,39 +1,40 @@
 # Model selection — recommended models per task
 
-All models run locally on CPU. Selections prioritise: (a) quality-per-RAM, (b) actively maintained, (c) permissive licence for private personal use, (d) good inference support in the chosen Rust runtimes.
+All models run locally on CPU by default. Users can opt in to cloud providers (OpenAI-compatible endpoints, Google Speech) via Settings → Integrations. Selections prioritise: (a) quality-per-RAM, (b) actively maintained, (c) permissive licence for private personal use, (d) good inference support in the chosen Rust runtimes.
 
-**Language scope (v1): English only.** Whisper's `.en` variants, BGE's English model, and the default LLM are tuned for English. Ingesting non-English text will not crash but the Style Profile's English-specific analysers (function-word table, register classifier) will produce noisy output. Multilingual support is a v2 decision requiring: a multilingual embedding model, whisper-large-v3 (slower), and language-aware analysers.
+**Language scope:** Bahasa Malaysia, English, Mandarin (Simplified and Traditional), Cantonese, Tamil, and any language Whisper large-v3 supports. The embedding model (bge-m3) covers 100+ languages. Language is auto-detected per document and used to route audio to the best available transcription provider.
 
 ## Quick summary
 
 | Task | Recommended default | RAM at load | Format | Rust runtime |
 |------|--------------------|-------------|--------|--------------|
-| Speech-to-text | **`whisper-small.en`** (`ggml-small.en.bin`) | ~ 1 GB | GGML | `whisper-rs` |
-| Text embeddings | **`BAAI/bge-small-en-v1.5`** | ~ 150 MB | ONNX | `fastembed` |
+| Speech-to-text | **`whisper-large-v3`** (`ggml-large-v3.bin`) | ~ 3 GB | GGML | `whisper-rs` |
+| Text embeddings | **`BAAI/bge-m3`** | ~ 1 GB | ONNX | `fastembed` |
+| Language detection | **`lingua`** (Rust crate, built-in) | < 50 MB | — | `lingua` |
 | Chat LLM | **`Qwen2.5-7B-Instruct` Q4_K_M** | ~ 5.5 GB | GGUF | `llama-cpp-2` |
 | Reranker (optional) | **`BAAI/bge-reranker-base`** | ~ 250 MB | ONNX | `fastembed` |
 
-Everything fits comfortably in a 16 GB VPS with room for Postgres and the OS.
+The full multilingual stack is tight on 16 GB. Comfortable target is 32 GB. See hardware sizing below.
 
 ## Speech-to-text (audio → text)
 
-### Default: `whisper-small.en` (English-only)
+### Default: `whisper-large-v3` (multilingual)
 
-- **File:** `ggml-small.en.bin` (~ 465 MB on disk, ~ 1 GB loaded).
-- **Why:** sweet spot of accuracy and speed on CPU. Runs at ~ 0.5× realtime on a 4 vCPU box (1 hour audio → ~ 2 hours process). WER on clean audio is 5–7 %.
-- **When to switch:** if users upload non-English audio.
+- **File:** `ggml-large-v3.bin` (~ 1.5 GB on disk, ~ 3 GB loaded).
+- **Why:** best-in-class accuracy across all supported languages including Malay, Mandarin (`zh`), Cantonese (`yue`), and Tamil. Supports 99 languages. WER on clean English ~3 %, Mandarin ~6 %.
+- **Language routing:** the worker passes a `language` hint derived from `documents.detected_language`. Cantonese uses `yue` rather than `zh` to prevent Whisper from producing Mandarin output.
+- **Cloud fallback:** users who add a Google Speech provider get better `yue-Hant-HK` support; the provider registry tries it first for Cantonese audio.
 
 ### Alternatives
 
 | Model | Size | When |
 |-------|------|------|
-| `whisper-base.en` | ~ 150 MB | Faster (~ 1× realtime), noticeably lower accuracy. Good for a dev box. |
-| `whisper-medium.en` | ~ 1.5 GB | Better accuracy, roughly 0.3× realtime. Use if audio is noisy or accented. |
-| `whisper-large-v3` | ~ 3 GB | Multilingual, best accuracy. Too slow on CPU for real-time UX; viable for overnight batch. |
-| `whisper-tiny.en` | ~ 75 MB | For the lowest-spec VPS. Accuracy drops fast. Not recommended unless hardware demands it. |
+| `whisper-medium` | ~ 1.5 GB (1.5 GB loaded) | Decent multilingual accuracy; half the RAM cost. Good 16 GB compromise. |
+| `whisper-base.en` | ~ 150 MB | English-only dev/test. Not for production. |
+| `whisper-small.en` | ~ 465 MB | English only; faster than large-v3 but drops multilingual support. |
 
 **Licence:** MIT (OpenAI Whisper).
-**Download:** `https://huggingface.co/ggerganov/whisper.cpp` — `*.bin` files.
+**Download:** `https://huggingface.co/ggerganov/whisper.cpp` — `ggml-large-v3.bin`.
 
 ### Preprocessing note
 
@@ -41,25 +42,44 @@ Whisper expects 16 kHz mono wav. Input files are transcoded via `ffmpeg` before 
 
 ## Text embeddings
 
-### Default: `BAAI/bge-small-en-v1.5`
+### Default: `BAAI/bge-m3`
 
-- **Dim:** 384.
-- **Size:** ~ 130 MB ONNX.
-- **Why:** consistently near-top of MTEB for its size. CPU-friendly. `fastembed` ships it out of the box.
-- **Languages:** English optimised; handles basic multilingual but weakly.
+- **Dim:** 1024.
+- **Size:** ~ 570 MB ONNX (~ 1 GB loaded).
+- **Why:** multilingual (100+ languages), state-of-the-art retrieval across all Malaysian languages. Supports dense, sparse, and multi-vector retrieval modes; we use dense only.
+- **Languages:** Malay, English, Simplified Chinese, Traditional Chinese, Cantonese (via Chinese tokenisation), Tamil, and 95+ more.
 
 ### Alternatives
 
 | Model | Dim | Size | When |
 |-------|-----|------|------|
-| `intfloat/e5-small-v2` | 384 | ~ 130 MB | Very close to BGE on benchmarks, sometimes better on asymmetric queries. |
-| `BAAI/bge-base-en-v1.5` | 768 | ~ 440 MB | Meaningful quality bump; pgvector index grows 2×. Use if retrieval feels weak. |
-| `nomic-ai/nomic-embed-text-v1.5` | 768 | ~ 550 MB | Great quality, task-specific prefixes. Permissive licence. |
-| `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~ 90 MB | Older but bulletproof; slightly weaker than BGE. |
+| `BAAI/bge-base-en-v1.5` | 768 | ~ 440 MB | English-only but strong; use if corpus is pure English and RAM is tight. |
+| `intfloat/multilingual-e5-base` | 768 | ~ 550 MB | Alternative multilingual model; slightly weaker than bge-m3. |
+| `BAAI/bge-small-en-v1.5` | 384 | ~ 130 MB | English dev/test only. Not production-suitable for Malaysian content. |
 
-**Dimension locks the schema.** Changing dim later means re-indexing all chunks and dropping/recreating the pgvector column + HNSW index. Pick once for v1.
+**Dimension locks the schema.** Changing dim later means re-embedding all chunks and rebuilding the HNSW index. Existing chunks generated with a different dim must be re-embedded before they become retrievable.
 
 **Licence:** Apache-2.0 / MIT across these options.
+
+## Language detection
+
+### `lingua` (built-in Rust crate)
+
+Language detection runs in-process with no separate model file. The `lingua` crate is compiled with support for English, Malay, Chinese, and Tamil (plus Cantonese via a character-frequency heuristic layered on top — most CJK models conflate Cantonese with Mandarin).
+
+Detection runs in `spawn_blocking` after text extraction. The result is stored in `documents.detected_language` as a BCP-47 code:
+
+| Language | Stored code |
+|----------|-------------|
+| English | `en` |
+| Bahasa Malaysia | `ms` |
+| Mandarin (Simplified) | `zh-Hans` |
+| Mandarin (Traditional) | `zh-Hant` |
+| Cantonese | `yue` |
+| Tamil | `ta` |
+| Other | raw BCP-47 code (e.g. `iba` for Iban) |
+
+For audio documents, language is detected by Whisper and stored back to `detected_language` after transcription.
 
 ## Chat LLM (the generator)
 
@@ -127,9 +147,9 @@ Retrieval quality often improves with a reranker applied to the top 30–50 cand
 ```
 /data/models/
   whisper/
-    ggml-small.en.bin
+    ggml-large-v3.bin
   embeddings/
-    bge-small-en-v1.5/
+    bge-m3/
       model.onnx
       tokenizer.json
   llm/
@@ -140,7 +160,7 @@ Retrieval quality often improves with a reranker applied to the top 30–50 cand
       tokenizer.json
 ```
 
-`fastembed` handles download/caching for embedding + reranker models if a path isn't preseeded. For prod we pre-download in the Docker build to avoid runtime fetches.
+`fastembed` handles download/caching for embedding + reranker models if a path isn't preseeded. For prod we pre-download in the Podman build to avoid runtime fetches.
 
 ## File integrity
 
@@ -176,8 +196,8 @@ The actual pinned hashes are recorded during first prod build (capture once, com
 
 | Model | URL |
 |-------|-----|
-| whisper small.en | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin` |
-| bge-small-en-v1.5 | `https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx` |
+| whisper large-v3 | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin` |
+| bge-m3 | downloaded automatically by `fastembed` on first run, or pre-seed via `scripts/download-models.sh` |
 | qwen2.5-7b-instruct-q4_k_m | `https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf` |
 
 A `scripts/download-models.sh` script fetches all three, verifies SHA-256, and places them correctly. Re-run to re-verify.
@@ -203,9 +223,9 @@ Document this as a rare, planned migration.
 
 | VPS spec | Feasible defaults |
 |----------|-------------------|
-| 2 vCPU / 8 GB | Phi-3 mini 3.8B, whisper-base.en, bge-small. Slow but works. |
-| 4 vCPU / 16 GB | **Recommended defaults above.** |
-| 8 vCPU / 32 GB | Qwen2.5-14B Q4_K_M, whisper-medium.en, bge-base. |
-| 16 vCPU / 64 GB | Qwen2.5-14B Q6_K; still CPU — diminishing returns past 8 cores. |
+| 2 vCPU / 8 GB | Phi-3 mini 3.8B, whisper-base.en, bge-small-en. English only. Slow. |
+| 4 vCPU / 16 GB | Qwen2.5-7B, whisper-medium, bge-m3. `MAX_CONCURRENT_WHISPER=1`. Multilingual. |
+| **8 vCPU / 32 GB** | **Recommended for multilingual stack.** whisper-large-v3, bge-m3, Qwen2.5-7B with headroom. |
+| 16 vCPU / 64 GB | Qwen2.5-14B Q4_K_M, whisper-large-v3, bge-m3. |
 
 GPU would change everything (15–30× generation speed, sub-realtime whisper, per-persona LoRA training), but is out of scope for v1.
