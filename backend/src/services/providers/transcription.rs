@@ -14,7 +14,11 @@ pub trait TranscriptionProvider: Send + Sync {
     /// Whether this provider supports the given language.
     fn supports_language(&self, lang: &Language) -> bool;
     /// Transcribe an audio file, returning a `Transcript`.
-    async fn transcribe(&self, audio_path: &Path, hint: LanguageHint) -> Result<Transcript, AppError>;
+    async fn transcribe(
+        &self,
+        audio_path: &Path,
+        hint: LanguageHint,
+    ) -> Result<Transcript, AppError>;
 }
 
 // ─── LocalWhisperProvider ────────────────────────────────────────────────────
@@ -43,7 +47,11 @@ impl TranscriptionProvider for LocalWhisperProvider {
         true
     }
 
-    async fn transcribe(&self, audio_path: &Path, hint: LanguageHint) -> Result<Transcript, AppError> {
+    async fn transcribe(
+        &self,
+        audio_path: &Path,
+        hint: LanguageHint,
+    ) -> Result<Transcript, AppError> {
         let model_path = self.model_path.clone();
         let audio_path = audio_path.to_owned();
 
@@ -63,9 +71,13 @@ impl TranscriptionProvider for LocalWhisperProvider {
             let (text, duration_sec) = transcriber
                 .transcribe_with_language(&audio_path, |_| {}, lang_code.as_deref())
                 .map_err(|e| match e {
-                    crate::services::transcriber::TranscriberError::AudioTooLong => AppError::AudioTooLong,
+                    crate::services::transcriber::TranscriberError::AudioTooLong => {
+                        AppError::AudioTooLong
+                    }
                     crate::services::transcriber::TranscriberError::Other(inner) => {
-                        AppError::IngestFailed { reason: inner.to_string() }
+                        AppError::IngestFailed {
+                            reason: inner.to_string(),
+                        }
                     }
                 })?;
 
@@ -124,7 +136,11 @@ impl TranscriptionProvider for GoogleSpeechProvider {
         true
     }
 
-    async fn transcribe(&self, audio_path: &Path, hint: LanguageHint) -> Result<Transcript, AppError> {
+    async fn transcribe(
+        &self,
+        audio_path: &Path,
+        hint: LanguageHint,
+    ) -> Result<Transcript, AppError> {
         // Determine the language code
         let lang_code = hint
             .user_override
@@ -174,10 +190,9 @@ impl TranscriptionProvider for GoogleSpeechProvider {
             )));
         }
 
-        let result: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("Google Speech response parse: {e}")))?;
+        let result: serde_json::Value = resp.json().await.map_err(|e| {
+            AppError::Internal(anyhow::anyhow!("Google Speech response parse: {e}"))
+        })?;
 
         // Extract transcript from response
         let mut full_text = String::new();

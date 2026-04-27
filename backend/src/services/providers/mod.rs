@@ -149,7 +149,9 @@ impl ProviderRegistry {
         let mut transcription: HashMap<String, Arc<dyn TranscriptionProvider>> = HashMap::new();
         transcription.insert(
             "local_whisper".to_owned(),
-            Arc::new(transcription::LocalWhisperProvider::new(&whisper_model_path)),
+            Arc::new(transcription::LocalWhisperProvider::new(
+                &whisper_model_path,
+            )),
         );
 
         let mut llm_map: HashMap<String, Arc<dyn LlmProvider>> = HashMap::new();
@@ -194,13 +196,11 @@ impl ProviderRegistry {
                 match row.provider.as_str() {
                     "google_speech" => {
                         if let Some(api_key) = extract_decrypted_key(&row.config, app_secret) {
-                            let region = row.config["region"]
-                                .as_str()
-                                .unwrap_or("global")
-                                .to_owned();
-                            chain.push(Arc::new(
-                                transcription::GoogleSpeechProvider::new(api_key, region),
-                            ));
+                            let region =
+                                row.config["region"].as_str().unwrap_or("global").to_owned();
+                            chain.push(Arc::new(transcription::GoogleSpeechProvider::new(
+                                api_key, region,
+                            )));
                         }
                     }
                     _ => {

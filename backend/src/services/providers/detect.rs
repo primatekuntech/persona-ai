@@ -15,8 +15,8 @@ pub fn detect_language(text: &str) -> Option<Language> {
     // Cantonese-specific character heuristic (script + character frequency).
     // These characters are heavily used in written Cantonese but rare in Mandarin.
     let cantonese_markers = [
-        '係', '唔', '喺', '嘅', '咁', '佢', '俾', '冇', '啱', '咋',
-        '噉', '哋', '㗎', '囉', '喎', '嗱', '啩', '囖', '嘞', '囉',
+        '係', '唔', '喺', '嘅', '咁', '佢', '俾', '冇', '啱', '咋', '噉', '哋', '㗎', '囉', '喎',
+        '嗱', '啩', '囖', '嘞', '囉',
     ];
     let cantonese_score: usize = text
         .chars()
@@ -67,7 +67,8 @@ mod tests {
 
     #[test]
     fn detects_english() {
-        let text = "The quick brown fox jumps over the lazy dog. This is a test of language detection.";
+        let text =
+            "The quick brown fox jumps over the lazy dog. This is a test of language detection.";
         let lang = detect_language(text);
         assert_eq!(lang, Some(Language::English));
     }

@@ -30,10 +30,7 @@ pub struct UpdateFields {
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 /// List all provider configs for a user, ordered by service + priority.
-pub async fn list_for_user(
-    db: &PgPool,
-    user_id: Uuid,
-) -> Result<Vec<ProviderConfig>, AppError> {
+pub async fn list_for_user(db: &PgPool, user_id: Uuid) -> Result<Vec<ProviderConfig>, AppError> {
     sqlx::query_as(
         "SELECT id, user_id, service, provider, priority, config, enabled, created_at \
          FROM provider_configs \

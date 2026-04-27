@@ -89,13 +89,22 @@ pub async fn create_provider(
 
     // Encrypt api_key if provided in config
     let config = encrypt_config_key(
-        body.config.unwrap_or(serde_json::Value::Object(Default::default())),
+        body.config
+            .unwrap_or(serde_json::Value::Object(Default::default())),
         &state.config.session_secret,
     )?;
 
     let priority = body.priority.unwrap_or(10);
 
-    let created = repo::create(&state.db, ctx.user_id, &body.service, &body.provider, priority, config).await?;
+    let created = repo::create(
+        &state.db,
+        ctx.user_id,
+        &body.service,
+        &body.provider,
+        priority,
+        config,
+    )
+    .await?;
 
     let masked = mask_config(created, &state.config.session_secret);
     Ok((StatusCode::CREATED, Json(masked)))
@@ -163,10 +172,7 @@ pub async fn test_provider(
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /// If the config contains a plaintext `api_key`, encrypt it and store as `enc_api_key`.
-fn encrypt_config_key(
-    mut config: Value,
-    app_secret: &str,
-) -> Result<Value, AppError> {
+fn encrypt_config_key(mut config: Value, app_secret: &str) -> Result<Value, AppError> {
     if let Some(obj) = config.as_object_mut() {
         if let Some(raw_key) = obj.remove("api_key") {
             if let Some(key_str) = raw_key.as_str() {
@@ -197,9 +203,7 @@ async fn run_provider_test(config: &ProviderConfig, app_secret: &str) -> Result<
             let endpoint = config.config["endpoint"]
                 .as_str()
                 .unwrap_or("https://api.openai.com");
-            let model = config.config["model"]
-                .as_str()
-                .unwrap_or("gpt-4o-mini");
+            let model = config.config["model"].as_str().unwrap_or("gpt-4o-mini");
 
             let url = format!("{}/v1/chat/completions", endpoint.trim_end_matches('/'));
             let payload = json!({

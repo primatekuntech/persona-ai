@@ -38,8 +38,8 @@ impl EmbeddingProvider for LocalBgeProvider {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, AppError> {
         let model_dir = self.model_dir.clone();
         tokio::task::spawn_blocking(move || {
-            let embedder = crate::services::embedder::Embedder::new(&model_dir)
-                .map_err(AppError::Internal)?;
+            let embedder =
+                crate::services::embedder::Embedder::new(&model_dir).map_err(AppError::Internal)?;
             let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
             embedder.embed(&text_refs).map_err(AppError::Internal)
         })

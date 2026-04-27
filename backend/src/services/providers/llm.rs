@@ -112,7 +112,10 @@ impl LlmProvider for OpenAICompatProvider {
         &self,
         req: GenerateRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, AppError>> + Send>>, AppError> {
-        let url = format!("{}/v1/chat/completions", self.endpoint.trim_end_matches('/'));
+        let url = format!(
+            "{}/v1/chat/completions",
+            self.endpoint.trim_end_matches('/')
+        );
 
         // Build messages array (system + conversation)
         let mut messages = vec![serde_json::json!({
@@ -160,33 +163,32 @@ impl LlmProvider for OpenAICompatProvider {
         // Parse the SSE stream
         use futures::StreamExt;
         let byte_stream = resp.bytes_stream();
-        let token_stream = byte_stream
-            .filter_map(|chunk_result| async move {
-                let chunk = chunk_result.ok()?;
-                let text = String::from_utf8_lossy(&chunk).into_owned();
-                // SSE lines start with "data: "
-                let mut tokens = Vec::new();
-                for line in text.lines() {
-                    let line = line.trim();
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data == "[DONE]" {
-                            break;
-                        }
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
-                            if let Some(content) = val["choices"][0]["delta"]["content"].as_str() {
-                                if !content.is_empty() {
-                                    tokens.push(content.to_owned());
-                                }
+        let token_stream = byte_stream.filter_map(|chunk_result| async move {
+            let chunk = chunk_result.ok()?;
+            let text = String::from_utf8_lossy(&chunk).into_owned();
+            // SSE lines start with "data: "
+            let mut tokens = Vec::new();
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if data == "[DONE]" {
+                        break;
+                    }
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
+                        if let Some(content) = val["choices"][0]["delta"]["content"].as_str() {
+                            if !content.is_empty() {
+                                tokens.push(content.to_owned());
                             }
                         }
                     }
                 }
-                if tokens.is_empty() {
-                    None
-                } else {
-                    Some(Ok::<String, AppError>(tokens.join("")))
-                }
-            });
+            }
+            if tokens.is_empty() {
+                None
+            } else {
+                Some(Ok::<String, AppError>(tokens.join("")))
+            }
+        });
 
         Ok(Box::pin(token_stream))
     }
