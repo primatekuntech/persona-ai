@@ -462,6 +462,13 @@ pub async fn accept_invite(
 
     tx.commit().await.map_err(AppError::Database)?;
 
+    // Insert default local provider configs for the new user (best-effort, non-fatal).
+    if let Err(e) =
+        crate::repositories::provider_configs::insert_local_defaults(pool, user.id).await
+    {
+        tracing::warn!(user_id=%user.id, error=%e, "failed to insert default provider configs (non-fatal)");
+    }
+
     // Start session
     session
         .cycle_id()

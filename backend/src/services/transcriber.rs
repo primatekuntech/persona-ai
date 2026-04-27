@@ -47,6 +47,17 @@ impl Transcriber {
         audio_path: &Path,
         progress_cb: impl Fn(i16),
     ) -> Result<(String, i32), TranscriberError> {
+        self.transcribe_with_language(audio_path, progress_cb, None)
+    }
+
+    /// Transcribe with an optional language hint (BCP-47 / Whisper code, e.g. `"zh"`, `"yue"`).
+    /// Pass `None` for auto-detect.
+    pub fn transcribe_with_language(
+        &self,
+        audio_path: &Path,
+        progress_cb: impl Fn(i16),
+        language: Option<&str>,
+    ) -> Result<(String, i32), TranscriberError> {
         // Step 1: Probe duration with ffprobe
         let duration_sec = probe_duration(audio_path).map_err(TranscriberError::Other)?;
         if duration_sec > MAX_DURATION_SEC {
@@ -110,6 +121,8 @@ impl Transcriber {
 
         let _ = &self.model_path; // suppress unused warning
         let _ = wav_path;
+        // Language hint would be passed to whisper params.set_language() when feature is enabled.
+        let _ = language;
         Err(TranscriberError::Other(anyhow::anyhow!(
             "Whisper not enabled — build with --features whisper and ensure model files exist at /data/models/"
         )))

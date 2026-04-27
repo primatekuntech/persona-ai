@@ -1,5 +1,9 @@
 /// Shared application state threaded through axum via `State<AppState>`.
-use crate::{config::AppConfig, email::ResendClient, services::broadcast, services::llm::Llm};
+use crate::{
+    config::AppConfig,
+    email::ResendClient,
+    services::{broadcast, llm::Llm, providers::ProviderRegistry},
+};
 use dashmap::DashMap;
 use sqlx::PgPool;
 use std::sync::{atomic::AtomicU8, Arc};
@@ -46,4 +50,8 @@ pub struct AppState {
     pub user_generation_counts: Arc<DashMap<Uuid, Arc<AtomicU8>>>,
     /// Local LLM; None if feature absent or model file missing.
     pub llm: Option<Arc<Llm>>,
+    /// Provider registry: maps provider names to their implementations.
+    /// Used at runtime to resolve provider chains from `provider_configs` table.
+    #[allow(dead_code)]
+    pub providers: ProviderRegistry,
 }

@@ -107,6 +107,10 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await
                 .ok();
+                // Insert default local provider configs for bootstrap admin
+                repositories::provider_configs::insert_local_defaults(&pool, user.id)
+                    .await
+                    .ok();
             } else {
                 tracing::warn!(
                     "ADMIN_BOOTSTRAP_EMAIL set but ADMIN_BOOTSTRAP_PASSWORD missing; skipping"
@@ -156,6 +160,14 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // ── Provider registry ────────────────────────────────────────────────────
+    let whisper_model_path = config.model_dir.join("whisper/ggml-small.en.bin");
+    let providers = services::providers::ProviderRegistry::new_local(
+        whisper_model_path,
+        llm.clone(),
+        config.model_dir.clone(),
+    );
+
     let state = AppState {
         db: pool,
         config: Arc::new(config.clone()),
@@ -165,6 +177,7 @@ async fn main() -> anyhow::Result<()> {
         generation_semaphore,
         user_generation_counts,
         llm,
+        providers,
     };
 
     // ── Background workers ───────────────────────────────────────────────────

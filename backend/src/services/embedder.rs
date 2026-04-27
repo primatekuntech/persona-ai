@@ -1,4 +1,5 @@
-/// Embedding service using fastembed (BGE-small-EN-v1.5).
+/// Embedding service using fastembed (BGE-M3 — multilingual, 100+ languages).
+/// Upgraded from bge-small-en-v1.5 in Sprint 8 to support Malaysian multilingual content.
 /// Runs inside `tokio::task::spawn_blocking`.
 /// Models must be pre-downloaded to `model_dir` (privacy requirement — no network calls).
 use std::path::Path;
@@ -9,15 +10,22 @@ pub struct Embedder {
 
 impl Embedder {
     /// Load the embedding model from a local directory.
-    /// Expected files in `model_dir/bge-small-en-v1.5/`:
+    /// Expected files in `model_dir/bge-m3/`:
     ///   - model.onnx
     ///   - tokenizer.json
     ///   - config.json
     ///   - special_tokens_map.json
     ///   - tokenizer_config.json
+    ///
+    /// Falls back to `bge-small-en-v1.5/` if `bge-m3/` is not present (backward compat).
     pub fn new(model_dir: &Path) -> Result<Self, anyhow::Error> {
-        // Locate BGE-small-EN-v1.5 files under model_dir
-        let bge_dir = model_dir.join("bge-small-en-v1.5");
+        // Prefer bge-m3 (multilingual); fall back to bge-small-en-v1.5 for backward compat
+        let bge_m3_dir = model_dir.join("bge-m3");
+        let bge_dir = if bge_m3_dir.exists() {
+            bge_m3_dir
+        } else {
+            model_dir.join("bge-small-en-v1.5")
+        };
 
         let read = |name: &str| -> Result<Vec<u8>, anyhow::Error> {
             let p = bge_dir.join(name);

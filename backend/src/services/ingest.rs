@@ -180,6 +180,31 @@ pub async fn run_ingest(
         (text, None, None)
     };
 
+    // Step 1b: Language detection
+    // For text docs: run lingua detection. For audio: rely on Whisper (stored separately).
+    let detected_language = if doc.kind != "audio" {
+        let text_for_detect = text.clone();
+        let lang = tokio::task::spawn_blocking(move || {
+            crate::services::providers::detect::detect_language(&text_for_detect)
+        })
+        .await
+        .unwrap_or(None);
+
+        if let Some(ref lang) = lang {
+            let lang_code = lang.as_bcp47().to_owned();
+            sqlx::query("UPDATE documents SET detected_language = $1 WHERE id = $2")
+                .bind(&lang_code)
+                .bind(document_id)
+                .execute(pool)
+                .await
+                .map_err(AppError::Database)?;
+        }
+        lang
+    } else {
+        None
+    };
+    let _ = detected_language; // used above; silence unused warning
+
     // Step 2: Chunk
     doc_repo::update_status(pool, document_id, "chunking", None, None).await?;
     emit(

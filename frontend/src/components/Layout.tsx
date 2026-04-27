@@ -1,7 +1,7 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useLogout, useMe } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Users, Mail, MessageSquare, Settings, LogOut } from "lucide-react";
+import { Users, Mail, MessageSquare, Settings, LogOut, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function NavItem({
@@ -48,6 +48,7 @@ export default function Layout() {
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           <NavItem to="/personas" icon={MessageSquare} label="Personas" />
           <NavItem to="/settings/account" icon={Settings} label="Settings" />
+          <NavItem to="/settings/integrations" icon={Puzzle} label="Integrations" />
 
           {me?.role === "admin" && (
             <>

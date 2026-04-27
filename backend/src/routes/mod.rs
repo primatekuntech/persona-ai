@@ -7,6 +7,7 @@ pub mod export;
 pub mod health;
 pub mod personas;
 pub mod profile;
+pub mod providers;
 
 use crate::state::AppState;
 use axum::{
@@ -154,6 +155,12 @@ pub fn build_router(state: AppState) -> Router {
             get(data_rights::download_export),
         )
         .route("/api/auth/delete", post(data_rights::delete_account))
+        // Provider configs
+        .route("/api/providers", get(providers::list_providers))
+        .route("/api/providers", post(providers::create_provider))
+        .route("/api/providers/:id", patch(providers::patch_provider))
+        .route("/api/providers/:id", delete(providers::delete_provider))
+        .route("/api/providers/:id/test", post(providers::test_provider))
         .layer(middleware::from_fn(crate::auth::csrf::csrf_middleware));
 
     // Document upload — rate-limited (60/60min) + 512 MB body limit for audio
